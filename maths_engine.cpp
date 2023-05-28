@@ -16,21 +16,16 @@ camera::camera(int h, int w) {
 	projection.m[3][2] = (-Far * Near) / (Far - Near);
 	projection.m[2][3] = 1.0f;
 	projection.m[3][3] = 0.0f;
-
-	_right = Vector_Add(position , _pointAt);
-
-	mat4x4 __matrix = Matrix_PointAt(position, _right, _up);
-	_matrix = Matrix_QuickInverse(__matrix);
 }
 
-uint32_t _getColorByLum(uint32_t base_color, float lum) {
-	uint8_t alpha = (int)(255.0f * lum);
-	Color color;
-	color.R(alpha);
-	color.G(alpha);
-	color.B(alpha);
-	color.A(alpha);
-	return color;//color.Ablend(Color(alpha), base_color);
+uint32_t _getColorByLum(float lum) {
+	uint8_t A = (uint8_t)(255.0f * lum);
+	uint32_t result =
+		((uint8_t)255 << 24) +
+		((uint8_t)A << 16) + // r
+		((uint8_t)A << 8) + // g
+		(uint8_t)A; // b
+	return result;
 }
 
 vec3d::vec3d() { w = 1; };
@@ -52,10 +47,10 @@ vec3d::vec3d(float _x, float _y, float _z) {
 	z = _z;
 	w = 1;
 }
-vec3d vec3d::operator+(vec3d v) {
+vec3d vec3d::operator+(const vec3d v) {
 	return { x + v.x, y + v.y, z + z };
 }
-vec3d vec3d::operator-(vec3d v) {
+vec3d vec3d::operator-(const vec3d v) {
 	return { x - v.x, y - v.y, z - v.z };
 }
 vec3d vec3d::operator/(float f) {
@@ -70,6 +65,10 @@ vec3d vec3d::operator*(vec3d v) {
 	_v.y = z * v.x - x * v.z;
 	_v.z = x * v.y - y * v.x;
 	return _v;
+}
+bool vec3d::operator==(vec3d v) {
+	if (x == v.x && y == v.y) return true;
+	return false;
 }
 
 vec3d Vector_Add(vec3d& v1, vec3d& v2)
@@ -182,4 +181,41 @@ mat4x4 Matrix_QuickInverse(mat4x4& m) // Only for Rotation/Translation Matrices
 	matrix.m[3][2] = -(m.m[3][0] * matrix.m[0][2] + m.m[3][1] * matrix.m[1][2] + m.m[3][2] * matrix.m[2][2]);
 	matrix.m[3][3] = 1.0f;
 	return matrix;
+}
+
+float sum(vector<vec3d> f) { float r = 0.0f; for (vec3d& i : f) { r += i.z; } return r; }
+size_t search(vector<vec3d>& verts, vec3d v) { size_t i = 0; for (vec3d& b : verts) { if (b == v) return i; else i++; } return -1; }
+
+float Cross(vec3d a, vec3d b) {
+	return a.x * b.y - a.y * b.x;
+}
+
+bool IsPointInTriangle(vec3d p, vec3d a, vec3d b, vec3d c) {
+	vec3d ab = b - a;
+	vec3d bc = c - b;
+	vec3d ca = a - c;
+
+	vec3d ap = p - a;
+	vec3d bp = p - b;
+	vec3d cp = p - c;
+
+	float cross1 = Cross(ab, ap);
+	float cross2 = Cross(bc, bp);
+	float cross3 = Cross(ca, cp);
+
+	if (cross1 > 0.0f || cross2 > 0.0f || cross3 > 0.0f)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+vec3d calculate_normal(polygon& poly) {
+	vec3d v1 = Vector_Sub(poly.p[1], poly.p[0]);
+	vec3d v2 = Vector_Sub(poly.p[2], poly.p[0]);
+	vec3d normal;
+	normal = Vector_CrossProduct(v1, v2);
+	normal.normalise();
+	return normal;
 }
