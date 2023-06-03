@@ -692,3 +692,25 @@ void window::DrawButtons() {
 void window::changeButton(size_t id, Button button) {
 	buttons[id] = button;
 }
+
+Image::Image(const Image& i) {
+	image = i.image;
+	x = i.x;
+	y = i.y;
+	sizex = i.sizex;
+	sizey = i.sizey;
+	id = i.id;
+}
+Image::Image(string _image, int _x, int _y) {
+	image = IMG_Load(_image.data());
+	x = _x;
+	y = _y;
+	sizex = image->w;
+	sizey = image->h;
+};
+
+void window::RenderImage(Image i) {
+	SDL_Rect base = { 0, 0, i.sizex, i.sizey };
+	SDL_Rect rect = {i.x, i.y, i.sizex, i.sizey};
+	SDL_BlitSurface(i.image, &base, screenSurface, &rect);
+}

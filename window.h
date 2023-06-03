@@ -21,6 +21,18 @@ using namespace std;
 
 typedef int BUTTON_CALL(void*);
 
+struct Image {
+	Image() {};
+	Image(const Image& i);
+	Image(string image, int x, int y);
+	SDL_Surface* image;
+	int x;
+	int y;
+	int sizex;
+	int sizey;
+	size_t id;
+};
+
 struct Button {
 	Button() {};
 	Button(const Button& b);
@@ -87,5 +99,6 @@ public:
 	void DrawString(string _string, uint16_t x, uint16_t y, uint32_t color, uint8_t size);
 	void DrawButtons();
 	void changeButton(size_t id, Button button);
+	void RenderImage(Image i);
 };
 

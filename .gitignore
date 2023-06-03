@@ -1,0 +1,11 @@
+.vs/
+x64/
+game.sln
+game.vcxproj
+game.vcxproj.filters
+game.vcxproj.user
+materials.mtl
+materials.obj
+out.txt
+poly.obj
+poly_cube.mtl

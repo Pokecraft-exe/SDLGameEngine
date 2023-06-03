@@ -119,8 +119,8 @@ private:
 
 		World = _matrixMakeIdentity();
 		World = Matrix_MultiplyMatrix(Ry, Rz);
-		//World = Matrix_MultiplyMatrix(World, Rx);
-		//World = Matrix_MultiplyMatrix(World, t);
+		World = Matrix_MultiplyMatrix(World, Rx);
+		World = Matrix_MultiplyMatrix(World, t);
 
 		/*mat4x4 _cameraRotation;
 
@@ -147,7 +147,6 @@ private:
 
 			for (int i = 0; i < size; i++) {
 				Transformed.p.push_back(MultiplyMatrixVector(World, poly.p[i]));
-				Transformed.p[i] = Vector_Add(Transformed.p[i], _mesh->origin);
 			}
 
 			vec3d normal = calculate_normal(Transformed);

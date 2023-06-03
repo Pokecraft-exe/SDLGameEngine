@@ -32,11 +32,12 @@ public:
 	light point;
 	Button* b1;
 	bool alt;
+	Image i;
 
 	bool OnUserCreates() {
 
 		axis = getMesh("Oaxis.obj");
-		cube = getMesh("poly_cube.obj");
+		cube = getMesh("poly_suzanne.obj");
 		//suzanne = getMesh("suzanne.obj");
 
 		cam = camera(screen.SCREEN_HEIGHT, screen.SCREEN_WIDTH);
@@ -45,6 +46,8 @@ public:
 		//moveMeshZ(&axis, 12.0f);
 		cube.origin.z += 12;
 		b1 = screen.addButton("Change", 30, 100, 60, 20, 0xff0066, change, _this);
+
+		i = Image("lettuce.png", 0, 0);
 		//rotateMeshZ(&suzanne, 180);
 		return true;
 	}
@@ -85,20 +88,25 @@ public:
 				}
 			}
 			else if (screen.e.type = MOUSEMOTION && !alt) {
-				//cout << "mouse moved in x : " << screen.e.motion.xrel << endl;
-				cube.RotationY -= screen.e.motion.xrel * 0.5f * fElapsedTime;
-				cube.RotationZ += screen.e.motion.yrel * 0.5f * fElapsedTime;
+				cube.RotationZ -= screen.e.motion.xrel * 0.5f * fElapsedTime;
+				cube.RotationY += screen.e.motion.yrel * 0.5f * fElapsedTime;
 				screen.setMousePos(screen.SCREEN_WIDTH / 2, screen.SCREEN_HEIGHT / 2);
 				//cout << "mouse moved in y : " << screen.e.motion.yrel << endl;
 			}
 		}
 
-		//rotateMeshY(&cube, fTheta * 10);
+		//rotateMeshX(&cube, fTheta * 10);
 		//renderMesh(&cube);
 		//renderMesh(cube);
 		//renderMesh(&suzanne);
 
 		render(&cube, &cam, &point);
+
+		i.x++;
+		i.y++;
+		if (i.x >= screen.SCREEN_WIDTH) i.x = 0;
+		if (i.y >= screen.SCREEN_HEIGHT) i.y = 0;
+		screen.RenderImage(i);
 
 		screen.DrawString("FPS: " + to_string(fps()), 10, 5, 0xff6666, 2);
 
@@ -130,11 +138,11 @@ int main(int argc, char* args[])
 
 	game._this = &game;
 
-	cout << &game << endl;
-
 	game.CreateNewScreen("Hello World", DEFAULT_WIDTH, DEFAULT_HEIGHT);
 	game.screen.setIcon("icon.bmp");
+
 	game.screen.HideCursor();
+	game.screen.setMousePos(game.screen.SCREEN_WIDTH / 2, game.screen.SCREEN_HEIGHT / 2);
 
 	game.start();
 

@@ -6,9 +6,8 @@ camera::camera(int h, int w) {
 	Near = 0.1f;
 	Far = 1000.0f;
 	Fov = 90.0f;
-	AspectRatio = 0;
-	FovRad = 1.0f / tanf(Fov * 0.5f / 180.0f * 3.14159f);
 	AspectRatio = (float)h / (float)w;
+	FovRad = 1.0f / tanf(Fov * 0.5f / 180.0f * 3.14159f);
 
 	projection.m[0][0] = AspectRatio * FovRad;
 	projection.m[1][1] = FovRad;
