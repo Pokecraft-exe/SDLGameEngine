@@ -54,8 +54,10 @@ private:
 	SDL_Surface* screenSurface;
 	SDL_Surface* Icon;
 	string w_name;
+	bool persist;
 public:
 	vector<Button> buttons;
+	vector<float> depthBuffer;
 	unsigned int SCREEN_WIDTH = 640;
 	uint8_t pixelSize = 1;
 	unsigned int SCREEN_HEIGHT = 480;
@@ -67,7 +69,7 @@ public:
 	void putPixel(unsigned int x, unsigned int y, uint32_t color);
 	Color getPixel(unsigned int x, unsigned int y);
 	void update();
-	void Clip(unsigned int& x, unsigned int& y);
+	bool TestClip(int x, int y);
 	void Clip(int& x, int& y);
 	void changeSize(unsigned int w, unsigned int h);
 	void changeName(string name);
@@ -75,14 +77,17 @@ public:
 	void clear();
 	void fill(Color c);
 	void drawLine(int x1, int y1, int x2, int y2, uint32_t color);
+	void drawDepthLine(int x1, int y1, float w1, int x2, int y2, float w2, uint32_t c);
 	void drawTriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color);
 	void drawAATriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color);
 	void drawPolygon(vector<vec3d> Points, uint32_t color);
+	void drawDepthPolygon(vector<vec3d> Points, uint32_t color);
 	void drawAAPolygon(vector<vec3d> Points, uint32_t color);
 	void quit();
 	void fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color);
 	void fillAATriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color);
 	void fillPolygon(vector<vec3d> Points, uint32_t color);
+	void fillDepthPolygon(vector<vec3d> Points, uint32_t color);
 	void fillAAPolygon(vector<vec3d> Points, uint32_t color);
 	void setIcon(string path);
 	void drawAALine(int x0, int y0, int x1, int y1, Color c);
@@ -100,5 +105,9 @@ public:
 	void DrawButtons();
 	void changeButton(size_t id, Button button);
 	void RenderImage(Image i);
+	void ClearDepthBuffer();
+	SDL_Window** getSDLWindow();
+	bool isPersistant();
+	void setPersistance(bool persistant);
 };
 

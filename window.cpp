@@ -6,6 +6,9 @@ window::window() {
 		return;
 	}
 	else {
+		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+			depthBuffer.push_back(0.0f);
+		}
 		Window = SDL_CreateWindow("default Empty", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
@@ -27,6 +30,9 @@ window::window(const char* name) {
 		return;
 	}
 	else {
+		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+			depthBuffer.push_back(0.0f);
+		}
 		Window = SDL_CreateWindow(name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
@@ -52,6 +58,9 @@ window::window(const char* name, unsigned int w, unsigned int h) {
 		return;
 	}
 	else {
+		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+			depthBuffer.push_back(0.0f);
+		}
 		Window = SDL_CreateWindow(name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
@@ -65,12 +74,13 @@ window::window(const char* name, unsigned int w, unsigned int h) {
 	}
 }
 
-void window::Clip(unsigned int& x, unsigned int& y)
+bool window::TestClip(int x, int y)
 {
-	if (x < 1) x = 1;
-	if (x >= SCREEN_WIDTH - 1) { x = SCREEN_WIDTH - 1; }
-	if (y < 1) y = 1;
-	if (y >= SCREEN_HEIGHT - 1) { y = SCREEN_HEIGHT - 1; }
+	if (x < 1 && 
+		x >= SCREEN_WIDTH - 1 && 
+		y < 1 && 
+		y >= SCREEN_HEIGHT - 1 ) return true;
+	return false;
 }
 
 void window::Clip(int& x, int& y)
@@ -110,6 +120,10 @@ void window::changeSize(unsigned int w, unsigned int h) {
 		return;
 	}
 	else {
+		depthBuffer.clear();
+		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+			depthBuffer.push_back(0.0f);
+		}
 		Window = SDL_CreateWindow(w_name.data(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
@@ -152,6 +166,121 @@ void window::clear() {
 	for (uint64_t i = 0; i < buffer_size; i+=4) { 
 		Uint8* p = (Uint8*)screenSurface->pixels + i;
 		*(Uint32*)p = (uint32_t)0x00000000;
+	}
+}
+
+void window::drawDepthLine(int x1, int y1, float w1, int x2, int y2, float w2, uint32_t c) {
+	int x, y, dx, dy, dx1, dy1, px, py, xe, ye, i;
+	float w, dw, dw1, pw, we = 0;
+	dx = x2 - x1;
+	dy = y2 - y1;
+	dw = w2 - w1;
+	dx1 = fabs(dx);
+	dy1 = fabs(dy);
+	dw1 = fabs(dw);
+	px = 2 * dy1 - dx1;
+	py = 2 * dx1 - dy1;
+	pw = 2 * dx1 - dw1;
+	if (dy1 <= dx1)
+	{
+		if (dx >= 0)
+		{
+			x = x1;
+			y = y1;
+			w = w1;
+			xe = x2;
+			we = w2;
+		}
+		else
+		{
+			x = x2;
+			y = y2;
+			w = w2;
+			xe = x1;
+			we = w1;
+		}
+		if (w >= depthBuffer[y * SCREEN_WIDTH + x])
+		{
+			putPixel(x, y, c);
+			depthBuffer[y * SCREEN_HEIGHT + x] = w;
+		}
+		for (i = 0; x < xe; i++)
+		{
+			x = x + 1;
+			w = (x1 - x2) * w + (1 / (x1 - x2)) * we;
+			if (px < 0)
+			{
+				px = px + 2 * dy1;
+				pw = pw + 2 * dy1;
+			}
+			else
+			{
+				if ((dx < 0 && dy < 0 && dw < 0) || (dx > 0 && dy > 0 && dw > 0))
+				{
+					y = y + 1;
+				}
+				else
+				{
+					y = y - 1;
+				}
+				px = px + 2 * (dy1 - dx1);
+				pw = pw + 2 * (dy1 - dw1);
+			}
+			if (w >= depthBuffer[y * SCREEN_WIDTH + x])
+			{
+				putPixel(x, y, c);
+				depthBuffer[y * SCREEN_HEIGHT + x] = w;
+			}
+		}
+	}
+	else
+	{
+		if (dy >= 0)
+		{
+			x = x1;
+			w = w1;
+			y = y1;
+			ye = y2;
+		}
+		else
+		{
+			x = x2;
+			w = w2;
+			y = y2;
+			ye = y1;
+		}
+		if (w >= depthBuffer[y * SCREEN_WIDTH + x])
+		{
+			putPixel(x, y, c);
+			depthBuffer[y * SCREEN_HEIGHT + x] = w;
+		}
+		for (i = 0; y < ye; i++)
+		{
+			y = y + 1;
+			if (py <= 0)
+			{
+				py = py + 2 * dx1;
+			}
+			else
+			{
+				if ((dx < 0 && dy < 0) || (dx > 0 && dy > 0))
+				{
+					x = x + 1;
+					w = (x1 - x2) * w + (1 / (x1 - x2)) * we;
+				}
+				else
+				{
+					x = x - 1;
+					w = (x1 + x2) / w - (1 / (x1 + x2)) / we;
+				}
+				py = py + 2 * (dx1 - dy1);
+			}
+			if (w >= depthBuffer[y * SCREEN_WIDTH + x])
+			{
+				putPixel(x, y, c);
+				depthBuffer[y * SCREEN_HEIGHT + x] = w;
+			}
+		}
 	}
 }
 
@@ -489,6 +618,10 @@ void window::fillAATriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint
 }
 
 void window::fillPolygon(vector<vec3d> Points, uint32_t color) {
+	if (Points.size() == 3) {
+		fillTriangle(Points[0].x, Points[0].y, Points[1].x, Points[1].y, Points[2].x, Points[2].y, color);
+		return;
+	}
 	int xmax = 0, ymax = 0, xmin = 0, ymin = 0, v = 0;
 	vector<int> inter;
 	v = Points.size();
@@ -551,6 +684,89 @@ void window::fillPolygon(vector<vec3d> Points, uint32_t color) {
 	}
 }
 
+void window::fillDepthPolygon(vector<vec3d> Points, uint32_t color) {
+	if (Points.size() < 3) return;
+	int xmax = 0, ymax = 0, wmax = 0, xmin = 0, ymin = 0, wmin = 0, v = 0;
+	vector<int> inter;
+	vector<int> interW;
+	v = Points.size();
+	Points.push_back(Points[0]);
+	float s, s2;
+
+	for (vec3d& p : Points) {
+		if (p.x > xmax) xmax = p.x;
+		else if (xmin > p.x) xmin = p.x;
+		if (p.y > ymax) ymax = p.y;
+		else if (ymin > p.y) ymin = p.y;
+		if (p.w > wmax) wmax = p.w;
+		else if (wmin > p.w) ymin = p.w;
+		inter.push_back(0);
+		interW.push_back(0);
+	}
+
+	s = ymin + 0.01;
+	while (s <= ymax)
+	{
+		int x1, x2, w1, w2, y1, y2, temp, c, c2, x, y, w;
+		c = 0;
+		c2 = 0;
+		
+		for (int i = 0; i < v; i++)
+		{
+			x1 = Points[i].x;
+			y1 = Points[i].y;
+			w1 = Points[i].w;
+			x2 = Points[i + 1].x;
+			y2 = Points[i + 1].y;
+			w2 = Points[i + 1].w;
+			if (y2 < y1)
+			{
+				temp = x1;
+				x1 = x2;
+				x2 = temp;
+				temp = w1;
+				w1 = w2;
+				w2 = temp;
+				temp = y1;
+				y1 = y2;
+				y2 = temp;
+			}
+			
+			if (s <= y2 && s >= y1)
+			{
+				if ((y1 - y2) == 0){
+					x = x1;
+					w = w1;
+				}
+				else // used to make changes in x. so that we can fill our polygon after cerain distance
+				{
+					x = ((x2 - x1) * (s - y1)) / (y2 - y1);
+					x = x + x1;
+					w = ((w2 - w1) * (s - y1)) / (y2 - y1);
+					w = w + w1;
+				}
+				if (x <= xmax && x >= xmin)
+					inter[c++] = x;
+				if (w <= wmax && w >= wmin)
+					interW[c2++] = w;
+			}
+		}
+		s++;
+		int j, i = 0;
+		temp = 0;
+
+		for (i = 0; i < v; i++)
+		{
+			drawDepthLine(Points[i].x, Points[i].y, Points[i].w, Points[i + 1].x, Points[i + 1].y, Points[i + 1].w,  color); // used to make hollow outlines of a polygon
+		}
+		for (i = 0; i < c; i += 2)
+		{
+			drawDepthLine(inter[i], s, interW[i], inter[i + 1], s, interW[i], color);  // Used to fill the polygon ....
+		}
+	}
+	
+}
+
 void fillAAPolygon(vector<vec3d> Points, uint32_t color);
 
 void window::DrawRect(int x, int y, int size_x, int size_y, uint32_t color) {
@@ -569,10 +785,20 @@ void window::drawPolygon(vector<vec3d> Points, uint32_t color) {
 	for (int i = 0; i < size; i++) {
 		vec3d point = Points[i];
 		vec3d npoint = Points[i + 1];
-		drawLine(point.x, point.y, npoint.x, npoint.y, color);
+		/*if (TestClip((int)point.x, (int)point.y) || TestClip(npoint.x, npoint.y))*/	drawLine(point.x, point.y, npoint.x, npoint.y, color);
 	}
 }
 
+void window::drawDepthPolygon(vector<vec3d> Points, uint32_t color) {
+	size_t size = Points.size();
+	Points.push_back(Points[0]);
+	// Now do the actual drawing.
+	for (int i = 0; i < size; i++) {
+		vec3d point = Points[i];
+		vec3d npoint = Points[i + 1];
+		/*if (TestClip((int)point.x, (int)point.y) || TestClip(npoint.x, npoint.y))*/	drawDepthLine(point.x, point.y, point.w, npoint.x, npoint.y, npoint.w, color);
+	}
+}
 void window::drawAAPolygon(vector<vec3d> Points, uint32_t color) {
 	size_t size = Points.size();
 	Points.push_back(Points[0]);
@@ -674,7 +900,7 @@ void window::DrawChar(char c, uint16_t x, uint16_t y, uint32_t color, uint8_t si
 }
 
 void window::DrawString(string _string, uint16_t x, uint16_t y, uint32_t color, uint8_t size) {
-	const char* str = _string.data();
+	const char* str = _string.c_str();
 	while (*str) {
 		DrawChar(*str++, x, y, color, size);
 		x += (8 * size);
@@ -713,4 +939,23 @@ void window::RenderImage(Image i) {
 	SDL_Rect base = { 0, 0, i.sizex, i.sizey };
 	SDL_Rect rect = {i.x, i.y, i.sizex, i.sizey};
 	SDL_BlitSurface(i.image, &base, screenSurface, &rect);
+}
+
+void window::ClearDepthBuffer() {
+	depthBuffer.clear();
+	for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+		depthBuffer.push_back(0.0f);
+	}
+}
+
+SDL_Window** window::getSDLWindow() {
+	return &Window;
+}
+
+
+bool window::isPersistant() {
+	return persist;
+}
+void window::setPersistance(bool persistant) {
+	persist = persistant;
 }

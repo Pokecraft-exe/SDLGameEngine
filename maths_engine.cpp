@@ -9,6 +9,8 @@ camera::camera(int h, int w) {
 	AspectRatio = (float)h / (float)w;
 	FovRad = 1.0f / tanf(Fov * 0.5f / 180.0f * 3.14159f);
 
+	_target = { 0, 0, 1 };
+
 	projection.m[0][0] = AspectRatio * FovRad;
 	projection.m[1][1] = FovRad;
 	projection.m[2][2] = Far / (Far - Near);
@@ -97,6 +99,15 @@ vec3d Vector_CrossProduct(vec3d& v1, vec3d& v2)
 	v.y = v1.z * v2.x - v1.x * v2.z;
 	v.z = v1.x * v2.y - v1.y * v2.x;
 	return v;
+}
+float Vector_Length(vec3d& v)
+{
+	return sqrtf(Vector_DotProduct(v, v));
+}
+vec3d Vector_Normalise(vec3d& v)
+{
+	float l = Vector_Length(v);
+	return { v.x / l, v.y / l, v.z / l };
 }
 
 void vec3d::normalise()
@@ -210,11 +221,189 @@ bool IsPointInTriangle(vec3d p, vec3d a, vec3d b, vec3d c) {
 	return true;
 }
 
-vec3d calculate_normal(polygon& poly) {
-	vec3d v1 = Vector_Sub(poly.p[1], poly.p[0]);
-	vec3d v2 = Vector_Sub(poly.p[2], poly.p[0]);
+vec3d calculate_normal(vector<vec3d>& poly) {
+	if (poly.size() < 3) { return { 0, 0, 0 }; }
+	vec3d v1 = Vector_Sub(poly[1], poly[0]);
+	vec3d v2 = Vector_Sub(poly[2], poly[0]);
 	vec3d normal;
 	normal = Vector_CrossProduct(v1, v2);
 	normal.normalise();
 	return normal;
+}
+
+vec3d Vector_IntersectPlane(vec3d& plane_p, vec3d& plane_n, vec3d& lineStart, vec3d& lineEnd)
+{
+	plane_n = Vector_Normalise(plane_n);
+	float plane_d = -Vector_DotProduct(plane_n, plane_p);
+	float ad = Vector_DotProduct(lineStart, plane_n);
+	float bd = Vector_DotProduct(lineEnd, plane_n);
+	float t = (-plane_d - ad) / (bd - ad);
+	vec3d lineStartToEnd = Vector_Sub(lineEnd, lineStart);
+	vec3d lineToIntersect = Vector_Mul(lineStartToEnd, t);
+	return Vector_Add(lineStart, lineToIntersect);
+}
+
+int Triangle_ClipAgainstPlane(vec3d plane_p, vec3d plane_n, polygon* in_tri, polygon* out_tri1, polygon* out_tri2, vector<vec3d>* vertices)
+{
+	plane_n = Vector_Normalise(plane_n);
+	auto dist = [&](vec3d& p)
+	{
+		vec3d n = Vector_Normalise(p);
+		return (plane_n.x * p.x + plane_n.y * p.y + plane_n.z * p.z - Vector_DotProduct(plane_n, plane_p));
+	};
+
+	size_t inside_points[3];  int nInsidePointCount = 0;
+	size_t outside_points[3]; int nOutsidePointCount = 0;
+
+	float d0 = dist(vertices->at(in_tri->p[0]));
+	float d1 = dist(vertices->at(in_tri->p[1]));
+	float d2 = dist(vertices->at(in_tri->p[2]));
+
+	out_tri1->p.push_back(0);
+	out_tri1->p.push_back(0);
+	out_tri1->p.push_back(0);
+
+	out_tri2->p.push_back(0);
+	out_tri2->p.push_back(0);
+	out_tri2->p.push_back(0);
+
+	if (d0 >= 0) { inside_points[nInsidePointCount++] = in_tri->p[0]; }
+	else { outside_points[nOutsidePointCount++] = in_tri->p[0]; }
+	if (d1 >= 0) { inside_points[nInsidePointCount++] = in_tri->p[1]; }
+	else { outside_points[nOutsidePointCount++] = in_tri->p[1]; }
+	if (d2 >= 0) { inside_points[nInsidePointCount++] = in_tri->p[2]; }
+	else { outside_points[nOutsidePointCount++] = in_tri->p[2]; }
+
+	if (nInsidePointCount == 3) {
+		out_tri1->p[0] = in_tri->p[0];
+		out_tri1->p[1] = in_tri->p[1];
+		out_tri1->p[2] = in_tri->p[2];
+
+		return 1;
+	}
+
+	if (nInsidePointCount == 1 && nOutsidePointCount == 2)
+	{
+		cout << "single" << endl;
+		out_tri1->m.Ka = 0x00ff00;
+		out_tri1->p[0] = inside_points[0];
+
+		vertices->at(outside_points[0]) = Vector_IntersectPlane(plane_p, plane_n, vertices->at(inside_points[0]), vertices->at(outside_points[0]));
+		out_tri1->p[1] = outside_points[0];
+
+		vertices->at(outside_points[0]) = Vector_IntersectPlane(plane_p, plane_n, vertices->at(inside_points[0]), vertices->at(outside_points[0]));
+		out_tri1->p[2] = outside_points[1];
+
+		return 1;
+	}
+
+	if (nInsidePointCount == 2 && nOutsidePointCount == 1)
+	{
+		cout << "muliple" << endl;
+
+		out_tri1->m.Ka = 0xff0000;
+		out_tri1->p[0] = inside_points[0];
+		out_tri1->p[1] = inside_points[1];
+		out_tri1->p[2] = vertices->size();
+		vertices->push_back(Vector_IntersectPlane(plane_p, plane_n, vertices->at(inside_points[0]), vertices->at(outside_points[0])));
+
+		out_tri2->m.Ka = 0x0000ff;
+		out_tri2->p[0] = inside_points[1];
+		out_tri2->p[1] = out_tri1->p[2];
+		out_tri2->p[2] = vertices->size();
+		vertices->push_back(Vector_IntersectPlane(plane_p, plane_n, vertices->at(inside_points[1]), vertices->at(outside_points[0])));
+		cout << inside_points[0] << " " << inside_points[1] << " " << outside_points[0] << endl;
+
+		// The second triangle is composed of one of he inside points, a
+		// new point determined by the intersection of the other side of the 
+		// triangle and the plane, and the newly created point above
+
+		return 2;
+	}
+
+	return 0;
+}
+
+uint8_t polygon_ClipAgainstPlane(vec3d plane_p, vec3d plane_n, polygon* in_poly, polygon* out_poly, polygon* out_poly2, vector<vec3d>* vertices)
+{
+	out_poly->m = in_poly->m;
+	out_poly2->m = in_poly->m;
+	if (in_poly->p.size() == 3) {
+		return Triangle_ClipAgainstPlane(plane_p, plane_n, in_poly, out_poly, out_poly2, vertices);
+	}
+
+	plane_n.normalise();
+	auto dist = [&](vec3d& p)
+	{
+		vec3d n = p; n.normalise();
+		return (plane_n.x * n.x + plane_n.y * n.y + plane_n.z * n.z - Vector_DotProduct(plane_n, plane_p));
+	};
+
+	const int size = in_poly->p.size();
+	vector<size_t> inside_points;  int nInsidePointCount = 0;
+	vector<size_t> outside_points; int nOutsidePointCount = 0;
+	vector<float> distances;
+
+	for (size_t& i : in_poly->p) {
+		distances.push_back(dist(vertices->at(i)));
+	}
+
+	for (float d : distances) {
+		if (d >= 0) {
+			inside_points.push_back(in_poly->p[nInsidePointCount + nOutsidePointCount]); nInsidePointCount++;
+		}
+		else {
+			outside_points.push_back(in_poly->p[nInsidePointCount + nOutsidePointCount]); nOutsidePointCount++;
+		}
+	}
+
+	if (nInsidePointCount == 0)
+	{
+		out_poly->p = { 0, 0, 0 };
+		return 0;
+	}
+	
+	if (nInsidePointCount == in_poly->p.size())
+	{
+		out_poly = in_poly;
+
+		return 1;
+	}
+	else
+	{
+
+		for (size_t i : inside_points) {
+			out_poly->p.push_back(i);
+		}
+		
+		vertices->at(outside_points[outside_points.size() - 1]) = Vector_IntersectPlane(plane_p, plane_n, vertices->at(inside_points[0]), vertices->at(outside_points[outside_points.size() - 1]));
+		out_poly->p.push_back(outside_points[outside_points.size() - 1]);
+		vertices->at(outside_points[0]) = Vector_IntersectPlane(plane_p, plane_n, vertices->at(inside_points[0]), vertices->at(outside_points[0]));
+		out_poly->p.push_back(outside_points[0]);
+
+		return 1;
+	}
+}
+
+polygon marchingCubes(vector<vec3d> cubes, int ptr) {
+	return polygon();
+}
+
+mesh::mesh() {};
+
+mesh::mesh(vec3d* verts, size_t vsize, polygon* polys, size_t psize) {
+	this->vertices.clear();
+	for (size_t i = 0; i < vsize; i++) {
+		this->vertices.push_back(verts[i]);
+	}
+	this->polygons.clear();
+	for (size_t i = 0; i < psize; i++) {
+		this->polygons.push_back(polys[i]);
+	}
+	
+
+}
+mesh::mesh(vector<vec3d> verts, vector<polygon> polys) {
+	this->vertices = verts;
+	this->polygons = polys;
 }
