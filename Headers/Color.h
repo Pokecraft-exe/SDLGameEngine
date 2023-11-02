@@ -12,9 +12,9 @@ public:
 	uint8_t G();
 	uint8_t B();
 	uint8_t A();
-	void R(uint8_t n) { data[0]; };
-	void G(uint8_t n) { data[1]; };
-	void B(uint8_t n) { data[2]; };
-	void A(uint8_t n) { data[3]; };
+	void R(uint8_t n) { data[0] = n; };
+	void G(uint8_t n) { data[1] = n; };
+	void B(uint8_t n) { data[2] = n; };
+	void A(uint8_t n) { data[3] = n; };
 	operator uint32_t();
 };

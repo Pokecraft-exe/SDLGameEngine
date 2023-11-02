@@ -1,7 +1,7 @@
 #pragma once
 #include <chrono>
-//#include <cuda_runtime.h>
-//#include <device_launch_parameters.h>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
 #include <fstream>
 #include <functional>
 #include <iostream> //
@@ -17,7 +17,7 @@ using namespace std;
 #define DEFAULT_WIDTH 600
 #define DEFAULT_HEIGHT 400
 
-enum gpu {
+enum class gpu {
 	None = 0,
 	Cuda,
 	Intel
@@ -32,6 +32,7 @@ private:
 	void (*_calculatePolygons)(__parameters, void*);
 	void GameThread();
 public:
+	gpu currentGpu;
 	mat4x4 _matrixMakeIdentity();
 	void _meshApplyRotations(__parameters r_mesh);
 	void _cameraApplyRotations(__parameters r_camera);
@@ -43,6 +44,7 @@ public:
 	vector<mesh> meshes;
 	vector<light> lights;
 	float fElapsedTime = 0.0;
+	SDLGameEngine();
 	void start();
 	void CreateNewScreen(string Name, int w, int h);
 	virtual bool OnUserCreates() = 0;

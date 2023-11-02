@@ -2,6 +2,7 @@
 #include <functional>
 #include <memory>
 #include <SDL.h>
+#include <SDL_image.h>
 #include <stddef.h>
 #include <string>
 #include <type_traits>
