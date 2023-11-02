@@ -131,13 +131,13 @@ public:
 		render(&cube, &cam, &point);
 		//render(&cube1, &cam, &point);
 		//render(&cube2, &cam, &point);
-		render(&suzanne, &cam, &point);
+		//render(&suzanne, &cam, &point);
 
 		//screen.RenderImage(i);
 
 		//for (float w : screen.depthBuffer) if (w != 0) cout << w << endl;
 
-		screen.DrawString("FPS: " + to_string(fps()), 10, 5, 0xff6666, 2);
+		screen.DrawString("FPS: " + to_string((int)fps()), 10, 5, 0xff6666, 2);
 
 		screen.DrawButtons();
 

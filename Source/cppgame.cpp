@@ -1,5 +1,7 @@
 #include "game.h"
 
+SDLGameEngine::SDLGameEngine() {
+}
 void SDLGameEngine::GameThread() {
 	if (!OnUserCreates()) quit = true;
 
@@ -105,11 +107,23 @@ void SDLGameEngine::_drawPolygons(camera* _camera, light* _light, vector<vec3d>*
 	}
 }
 void SDLGameEngine::start() {
-	//int cudaDevice = cudaGetDeviceCount();
+	int cudaDevice = 0;
+	cudaGetDeviceCount(&cudaDevice);
 
-	gpu currentGpu = gpu::Intel;
+	if (cudaDevice > 0) {
+		currentGpu = gpu::Cuda;
 
-	_calculatePolygons = &calculatePolygonsIntel;
+		_calculatePolygons = &calculatePolygonsCuda;
+
+		cout << "Switching to cuda device gpu" << endl;
+	}
+	else {
+		currentGpu = gpu::Intel;
+
+		_calculatePolygons = &calculatePolygonsIntel; 
+
+		cout << "Switching to cuda device gpu" << endl;
+	}
 
 	GameThread();
 }
@@ -208,14 +222,22 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 
 	cout << "VERTS SIZE: " << verts.size() << std::endl;
 
+	int i = 0;
+	for (vec3d v : verts) {
+		cout << "v[" << i << "] x = " << v.x << " y = " << v.y << " z = " << v.z << endl;
+		i++;
+	}
+
+	throwException("cppgame.cpp", __FUNCTION__, "breakpoint", true);
+
 	vec3d plane_n = { 0.0f, 0.0f, 1.0f };
 	vec3d plane_p = { 0.0f, 0.0f, 0.5f };
 
 	auto dist = [&](vec3d& p)
-		{
-			vec3d n = p; n.normalise();
-			return (n.z - Vector_DotProduct(plane_n, plane_p));
-		};
+	{
+		vec3d n = p; n.normalise();
+		return (n.z - Vector_DotProduct(plane_n, plane_p));
+	};
 
 	/*for (polygon& p : polys) {
 		/*for (size_t& i : p.p) {
@@ -237,10 +259,10 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 		}
 	}*/
 
-	for (auto& triToRaster : polys)
+	/*for (auto& triToRaster : polys)
 	{
 		// Clip triangles against all four screen edges, this could yield
-		// a bunch of triangles, so create a queue that we traverse to 
+		// a bunch of triangles, so create a queue that we traverse to
 		//  ensure we only test new triangles generated against planes
 		polygon clipped[2];
 		list<polygon> listTriangles;
@@ -259,7 +281,7 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 				listTriangles.pop_front();
 				nNewTriangles--;
 
-				// Clip it against a plane. We only need to test each 
+				// Clip it against a plane. We only need to test each
 				// subsequent plane, against subsequent new triangles
 				// as all triangles after a plane clip are guaranteed
 				// to lie on the inside of the plane. I like how this
@@ -300,12 +322,12 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 			}
 			z2 /= size2 + 1;
 			return z1 > z2;
-		};
+		};*/
 
-	sort(clipped_polys.begin(), clipped_polys.end(), sortPolys);
+		//sort(clipped_polys.begin(), clipped_polys.end(), sortPolys);
 
-	// delegates the triangle drawing to another thread
-	_drawPolygons(_camera, _light, &verts, &clipped_polys);
+		// delegates the triangle drawing to another thread
+	_drawPolygons(_camera, _light, &verts, &polys);
 }
 void SDLGameEngine::moveMeshX(mesh* t_mesh, float unit) {
 	t_mesh->origin.x += unit;
