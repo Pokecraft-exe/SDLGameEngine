@@ -10,6 +10,7 @@
 #include "Color.h"
 #include "font.h"
 #include "maths_engine.h"
+#include "widgets.h"
 using namespace std;
 #define QUIT SDL_QUIT
 #define KEYDOWN SDL_KEYDOWN
@@ -20,35 +21,6 @@ using namespace std;
 
 #define GUI_BUTTONPRESSED 0x9345
 
-typedef int BUTTON_CALL(void*);
-
-struct Image {
-	Image() {};
-	Image(const Image& i);
-	Image(string image, int x, int y);
-	SDL_Surface* image;
-	int x;
-	int y;
-	int sizex;
-	int sizey;
-	size_t id;
-};
-
-struct Button {
-	Button() {};
-	Button(const Button& b);
-	Button(string text, int x, int y, int xend, int yend, Color color, BUTTON_CALL* OnClick, void* ptr, size_t id);
-	string text;
-	int x;
-	int y;
-	int xend = 9;
-	int yend = 9;
-	Color color;
-	BUTTON_CALL* OnClick;
-	void* ptr;
-	size_t id;
-};
-
 class window {
 private:
 	SDL_Window* Window;
@@ -56,20 +28,29 @@ private:
 	SDL_Surface* Icon;
 	string w_name;
 	bool persist;
-public:
-	vector<Button> buttons;
-	vector<float> depthBuffer;
-	unsigned int SCREEN_WIDTH = 640;
-	uint8_t pixelSize = 1;
 	unsigned int SCREEN_HEIGHT = 480;
+	unsigned int SCREEN_WIDTH = 640;
+	unsigned int SCREEN_BASE_HEIGHT = 480;
+	unsigned int SCREEN_BASE_WIDTH = 640;
+	bool isMouseDown = false;
+public:
+	BaseWidget* focused;
+	vector<BaseWidget*> widgets;
+	vector<float> depthBuffer;
+	uint8_t pixelSize = 1;
 	bool created = 0;
 	SDL_Event e;
 	window();
 	window(const char* name);
 	window(const char* name, unsigned int w, unsigned int h);
+	int sizex() { return SCREEN_WIDTH; }
+	int sizey() { return SCREEN_HEIGHT; }
+	int baseSizex() { return SCREEN_BASE_WIDTH; }
+	int baseSizey() { return SCREEN_BASE_HEIGHT; }
 	void putPixel(unsigned int x, unsigned int y, uint32_t color);
 	Color getPixel(unsigned int x, unsigned int y);
 	void update();
+	void resizable();
 	bool TestClip(int x, int y);
 	void Clip(int& x, int& y);
 	void changeSize(unsigned int w, unsigned int h);
@@ -100,15 +81,16 @@ public:
 	void setFullScreen();
 	void setFullScreenDesktop();
 	void setWindowed();
-	Button* addButton(string text, int x, int y, int xend, int yend, Color color, BUTTON_CALL* OnClick, void* ptr);
 	void DrawChar(char c, uint16_t x, uint16_t y, uint32_t color, uint8_t size);
 	void DrawString(string _string, uint16_t x, uint16_t y, uint32_t color, uint8_t size);
 	void DrawButtons();
-	void changeButton(size_t id, Button button);
+	void DrawWidgets();
+	void updateWidget(size_t id, BaseWidget widget);
 	void RenderImage(Image i);
 	void ClearDepthBuffer();
 	SDL_Window** getSDLWindow();
 	bool isPersistant();
 	void setPersistance(bool persistant);
+	SDL_Surface* getsScreenSurface();
 };
 

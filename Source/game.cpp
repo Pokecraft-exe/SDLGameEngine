@@ -1,179 +1,447 @@
-#include <iostream>
 #include "game.h"
-#include "window.h"
-using namespace std;
+#include <sycl/sycl.hpp>
+using namespace sycl;
 
-/*
-to do:
-clipping
-GPU threads,
-draw when render,
-textures,
-materials,
-raytracing,
-clean and optimize,
-animations
-*/
+SDLGameEngine::SDLGameEngine() {
+}
+void SDLGameEngine::GameThread() {
+	if (!OnUserCreates()) quit = true;
 
-int change(void* ptr);
-
-class GameEngine : public SDLGameEngine {
-public:
-	void* _this;
-	mesh axis;
-	mesh cube;
-	mesh cube1;
-	mesh cube2;
-	mesh suzanne;
-	float fTheta;
-	camera cam;
-	light point;
-	Button* b1;
-	bool alt;
-	Image i;
-
-	bool OnUserCreates() {
-
-		//cube = getMesh("Oaxis.obj");
-		vec3d vert[4] = { vec3d(0, 1, 0), vec3d(1, 1, 0) , vec3d(0, 0, 0) , vec3d(1, 0, 0) };
-		polygon polys[2] = { polygon({ 0, 3, 2 }), polygon({ 0, 1, 3}) };
-		cube = mesh( vert, 4, polys, 2 );
-		suzanne = getMesh("poly_suzanne.obj");
-		cube1 = getMesh("poly_cube.obj");
-		cube2 = getMesh("poly_cube.obj");
-
-		cam = camera(screen.SCREEN_HEIGHT, screen.SCREEN_WIDTH);
-		point.orientation = { 0.0f, 0.0f, -1.0f };
-
-		cam._pointAt = { 0.0f, 0.0f, 1.0f };
-
-		moveMeshZ(&suzanne, 12.0f);
-		moveMeshX(&suzanne, 4.0f);
-		moveMeshY(&suzanne, -4.0f);
-		moveMeshZ(&cube2, 104.0f);
-			
-		for (polygon& p : cube.polygons) {
-			p.m.Ka = 0xffffff;
-		}
-		cube.origin.z += 4;
-		b1 = screen.addButton("Change", 30, 100, 60, 20, 0xff0066, change, _this);
-
-		i = Image("lettuce.png", 0, 0);
-		//rotateMeshZ(&suzanne, 180);
-		return true;
+	auto time1 = std::chrono::system_clock::now();
+	auto time0 = std::chrono::system_clock::now();
+	while (!quit) {
+		do {
+			if (quit) return;
+			time1 = std::chrono::system_clock::now();
+			std::chrono::duration<float> _elapsedTime = time1 - time0;
+			time0 = time1;
+			fElapsedTime = _elapsedTime.count();
+			_fps = 1 / fElapsedTime;
+		} while (OnUserUpdate(fElapsedTime) && !quit);
 	}
 
-	bool OnUserUpdate(float fElapsedTime) {
+	if (!screen.isPersistant()) screen.quit();
+	return;
+}
+mat4x4 SDLGameEngine::_matrixMakeIdentity()
+{
+	mat4x4 matrix;
+	matrix.m[0][0] = 1.0f;
+	matrix.m[1][1] = 1.0f;
+	matrix.m[2][2] = 1.0f;
+	matrix.m[3][3] = 1.0f;
+	return matrix;
+}
+void SDLGameEngine::_meshApplyRotations(__parameters r_mesh) {
+	r_mesh.Rx->m[0][0] = 1.0f;
+	r_mesh.Rx->m[1][1] = cosf(r_mesh._mesh->RotationX);
+	r_mesh.Rx->m[1][2] = sinf(r_mesh._mesh->RotationX);
+	r_mesh.Rx->m[2][1] = -sinf(r_mesh._mesh->RotationX);
+	r_mesh.Rx->m[2][2] = cosf(r_mesh._mesh->RotationX);
+	r_mesh.Rx->m[3][3] = 1.0f;
 
-		//screen.clear();
-		screen.ClearDepthBuffer();
+	r_mesh.Ry->m[0][0] = cosf(r_mesh._mesh->RotationY);
+	r_mesh.Ry->m[0][2] = sinf(r_mesh._mesh->RotationY);
+	r_mesh.Ry->m[2][0] = -sinf(r_mesh._mesh->RotationY);
+	r_mesh.Ry->m[1][1] = 1.0f;
+	r_mesh.Ry->m[2][2] = cosf(r_mesh._mesh->RotationY);
+	r_mesh.Ry->m[3][3] = 1.0f;
 
-		screen.fill(0x00FFFF);
+	r_mesh.Rz->m[0][0] = cosf(3.14 + r_mesh._mesh->RotationZ);
+	r_mesh.Rz->m[0][1] = sinf(3.14 + r_mesh._mesh->RotationZ);
+	r_mesh.Rz->m[1][0] = -sinf(3.14 + r_mesh._mesh->RotationZ);
+	r_mesh.Rz->m[1][1] = cosf(3.14 + r_mesh._mesh->RotationZ);
+	r_mesh.Rz->m[2][2] = 1.0f;
+	r_mesh.Rz->m[3][3] = 1.0f;
+}
+void SDLGameEngine::_cameraApplyRotations(__parameters r_camera) {
+	r_camera.Rx->m[0][0] = 1;
+	r_camera.Rx->m[1][1] = cosf(r_camera._camera->RotationX);
+	r_camera.Rx->m[1][2] = sinf(r_camera._camera->RotationX);
+	r_camera.Rx->m[2][1] = -sinf(r_camera._camera->RotationX);
+	r_camera.Rx->m[2][2] = cosf(r_camera._camera->RotationX);
+	r_camera.Rx->m[3][3] = 1;
 
-		fTheta += 2.0f * fElapsedTime;
+	r_camera.Ry->m[0][0] = cosf(r_camera._camera->RotationY);
+	r_camera.Ry->m[0][2] = sinf(r_camera._camera->RotationY);
+	r_camera.Ry->m[2][0] = -sinf(r_camera._camera->RotationY);
+	r_camera.Ry->m[1][1] = 1.0f;
+	r_camera.Ry->m[2][2] = cosf(r_camera._camera->RotationY);
+	r_camera.Ry->m[3][3] = 1.0f;
 
-		while (screen.PollEvent()) {
-			if (screen.e.type == QUIT) {
-				quit = true; 
-			}
-			else if (screen.e.type == KEYDOWN) {
-				if (screen.e.key.keysym.scancode == 41) { quit = true; }
-				else if (screen.e.key.keysym.scancode == 26) {
-					vec3d vForward = Vector_Mul(cam._pointAt, 8.0f * fElapsedTime);
-					cam.position = Vector_Add(cam.position, vForward);
-				}
-				else if (screen.e.key.keysym.scancode == 22) {
-					vec3d vForward = Vector_Mul(cam._pointAt, 8.0f * fElapsedTime);
-					cam.position = Vector_Sub(cam.position, vForward);
-				}
-				else if (screen.e.key.keysym.scancode == 4) {
-					cam.RotationY += 0.5f * fElapsedTime;
-				}
-				else if (screen.e.key.keysym.scancode == 7) {
-					cam.RotationY -= 0.5f * fElapsedTime;
-				}
-				else if (screen.e.key.keysym.scancode == 82) {
-					cam.position.y += 8.0f * fElapsedTime;
-				}
-				else if (screen.e.key.keysym.scancode == 81) {
-					cam.position.y -= 8.0f * fElapsedTime;
-				}
-				else if (screen.e.key.keysym.scancode == 80) {
-					cam.position.x += 8.0f * fElapsedTime;
-				}
-				else if (screen.e.key.keysym.scancode == 79) {
-					cam.position.x -= 8.0f * fElapsedTime;
-				}
-				else if (screen.e.key.keysym.scancode == 226) {
-					alt = true;
-					screen.ShowCursor();
-				}
-				else {
-					cout << "Key \"" << screen.e.key.keysym.scancode << "\" pressed !" << endl;
-				}
-			}
-			else if (screen.e.type == KEYUP) {
-				if (screen.e.key.keysym.scancode == 226) {
-					alt = false;
-					screen.HideCursor();
-				}
-			}
-			else if (screen.e.type = MOUSEMOTION && !alt) {
-				//cam.RotationX -= screen.e.motion.xrel * 0.5f * fElapsedTime;
-				//cam.RotationY += screen.e.motion.yrel * 0.5f * fElapsedTime;
-				screen.setMousePos(screen.SCREEN_WIDTH / 2, screen.SCREEN_HEIGHT / 2);
-				//cout << "mouse moved in y : " << screen.e.motion.yrel << endl;
-			}
+	r_camera.Rz->m[0][0] = cosf(r_camera._camera->RotationZ);
+	r_camera.Rz->m[0][1] = sinf(r_camera._camera->RotationZ);
+	r_camera.Rz->m[1][0] = -sinf(r_camera._camera->RotationZ);
+	r_camera.Rz->m[1][1] = cosf(r_camera._camera->RotationZ);
+	r_camera.Rz->m[2][2] = 1;
+	r_camera.Rz->m[3][3] = 1;
+}
+void SDLGameEngine::_meshApplyTransations(__parameters t_mesh) {
+	t_mesh.t->m[0][0] = 1.0f;
+	t_mesh.t->m[1][1] = 1.0f;
+	t_mesh.t->m[2][2] = 1.0f;
+	t_mesh.t->m[3][3] = 1.0f;
+	t_mesh.t->m[3][0] = t_mesh._mesh->origin.x;
+	t_mesh.t->m[3][1] = t_mesh._mesh->origin.y;
+	t_mesh.t->m[3][2] = t_mesh._mesh->origin.z;
+}
+void SDLGameEngine::_drawPolygons(camera* _camera, light* _light, vector<vec3d>* _verts, vector<polygon>* _polys) {
+	for (size_t i = 0; i < _polys->size(); i++) {
+		vector<vec3d> verts;
+		material m;
+		for (size_t id : _polys->at(i).p) {
+			//cout << id << " " << _verts->size() << endl;
+			verts.push_back(_verts->at(id));
+			m = _polys->at(i).m;
 		}
+		vec3d normal = calculate_normal(verts);
+		float l = sqrtf(_light->orientation.x * _light->orientation.x +
+			_light->orientation.y * _light->orientation.y +
+			_light->orientation.z * _light->orientation.z);
+		_light->orientation.x /= l; _light->orientation.y /= l; _light->orientation.z /= l;
 
-		rotateMeshY(&suzanne, fTheta * 10);
+		float dp = normal.x * _light->orientation.x + normal.y * _light->orientation.y + normal.z * _light->orientation.z;
 
-		render(&cube, &cam, &point);
-		//render(&cube1, &cam, &point);
-		//render(&cube2, &cam, &point);
-		//render(&suzanne, &cam, &point);
-
-		//screen.RenderImage(i);
-
-		//for (float w : screen.depthBuffer) if (w != 0) cout << w << endl;
-
-		screen.DrawString("FPS: " + to_string((int)fps()), 10, 5, 0xff6666, 2);
-
-		screen.DrawButtons();
-
-		screen.update();
-		return true;
+		if (1) {//Vector_DotProduct(normal, _camera->_pointAt) < 0.0f) {
+			screen.fillPolygon(verts, m.Ka);//0xffffff);
+			//screen.drawPolygon(verts, 0xff6666);
+		}
 	}
-};
+}
+void SDLGameEngine::start() {
+	int cudaDevice = 0;
+	cudaGetDeviceCount(&cudaDevice);
 
-int change(void* ptr) {
-	GameEngine* _this = (GameEngine*)ptr;
-	if (_this->b1->text == "Change") {
-		Button b = *_this->b1; b.text = "Changed";
-		_this->screen.changeButton(_this->b1->id, b);
-		_this->cube = _this->getMesh("poly_cube.obj");
+	if (cudaDevice > 0) {
+		currentGpu = gpu::Cuda;
+
+		//_calculatePolygons = &calculatePolygonsCuda;
+
+		cout << "Switching to cuda device gpu" << std::endl;
 	}
 	else {
-		Button b = *_this->b1; b.text = "Change";
-		_this->screen.changeButton(_this->b1->id, b);
-		_this->cube = _this->getMesh("poly_suzanne.obj");
+		currentGpu = gpu::Intel;
+
+		_calculatePolygons = &calculatePolygonsIntel; 
+
+		cout << "Switching to intel device gpu" << std::endl;
 	}
-	return 0;
+
+	GameThread();
+}
+void SDLGameEngine::CreateNewScreen(string Name, int w, int h) {
+	screen = window(Name.c_str(), w, h);
+}
+float SDLGameEngine::fps() { 
+	return _fps; 
+}
+mesh SDLGameEngine::getMesh(string sFilename) {
+	ifstream f(sFilename);
+	bool file_read = false;
+	mesh _mesh;
+	if (!f.is_open()) return _mesh;
+
+	// Local cache of verts
+	vector<vec3d> verts;
+	vector<vec3d> normals;
+
+	while (!f.eof())
+	{
+		char line[128];
+		f.getline(line, 128);
+
+		strstream s;
+		s << line;
+		char junk;
+
+		if (line[0] == 'v')
+		{
+			if (line[1] == 'n') {
+				vec3d n;
+				s >> junk >> n.x >> n.y >> n.z;
+				normals.push_back(n);
+			}
+			else {
+				vec3d v;
+				s >> junk >> v.x >> v.y >> v.z;
+				verts.push_back(v);
+			}
+		}
+
+		if (line[0] == 'f')
+		{
+			polygon _polygon;
+			vector<int> f;
+			s >> junk;
+			vector<string> fi;
+			string fs = "";
+			while (!s.eof()) {
+				fs = "";
+				s >> fs;
+				fi.push_back(fs);
+			}
+			for (string& _s : fi) {
+				if (_s.find("/") == -1) {
+					f.push_back(stoi(_s));
+				}
+				else {
+					f.push_back(stoi(_s.substr(0, _s.find('/'))));
+					/*if (normals.size() > 0) {
+						_polygon.normal = normals[stoi(_s.substr(_s.rfind('/') + 1))-1];
+						_polygon.has_normal = true;
+					}*/
+				}
+			}
+
+			for (int i : f) {
+				_polygon.p.push_back(i - 1);
+			}
+			_mesh.polygons.push_back(_polygon);
+
+			file_read = true;
+		}
+	}
+
+	_mesh.vertices = verts;
+
+	f.close();
+	if (file_read) std::cout << "file \"" << sFilename << "\" read successfully, imported "
+		<< verts.size() << " vertices, " << normals.size() << " normals and "
+		<< _mesh.polygons.size() << " polygones!" << std::endl;
+	return _mesh;
+}
+void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
+
+	vector<vec3d> verts;
+	vector<polygon> polys = _mesh->polygons;
+	vector<polygon> clipped_polys;
+	__parameters param = { &verts, _mesh, _camera, _light }; param.end = false;
+
+	// delegates the triangle calculation to another thread while triangulating
+	std::thread t = std::thread(*_calculatePolygons, param, (void*)this);
+	t.join();
+
+	cout << "VERTS SIZE: " << verts.size() << std::endl;
+
+	int i = 0;
+	for (vec3d v : verts) {
+		cout << "v[" << i << "] x = " << v.x << " y = " << v.y << " z = " << v.z << std::endl;
+		i++;
+	}
+
+	vec3d plane_n = { 0.0f, 0.0f, 1.0f };
+	vec3d plane_p = { 0.0f, 0.0f, 0.5f };
+
+	auto dist = [&](vec3d& p)
+	{
+		vec3d n = p; n.normalise();
+		return (n.z - Vector_DotProduct(plane_n, plane_p));
+	};
+
+	/*for (polygon& p : polys) {
+		/*for (size_t& i : p.p) {
+			vec3d& v = verts[i];
+			if (v.x <= 1) v.x = 1;
+			if (v.x >= screen.SCREEN_WIDTH - 1) { v.x = screen.SCREEN_WIDTH - 1; }
+			if (v.y <= 1) v.y = 1;
+			if (v.y >= screen.SCREEN_HEIGHT - 1) { v.y = screen.SCREEN_HEIGHT - 1; }
+		}
+		polygon p1, p2;
+		int num = polygon_ClipAgainstPlane(plane_p, plane_n, &p, &p1, &p2, &verts);
+
+		if (num == 1) {
+			clipped_polys.push_back(p1);
+		}
+		else if (num == 2) {
+			clipped_polys.push_back(p1);
+			clipped_polys.push_back(p2);
+		}
+	}*/
+
+	/*for (auto& triToRaster : polys)
+	{
+		// Clip triangles against all four screen edges, this could yield
+		// a bunch of triangles, so create a queue that we traverse to
+		//  ensure we only test new triangles generated against planes
+		polygon clipped[2];
+		list<polygon> listTriangles;
+
+		// Add initial triangle
+		listTriangles.push_back(triToRaster);
+		int nNewTriangles = 1;
+
+		for (int p = 0; p < 4; p++)
+		{
+			int nTrisToAdd = 0;
+			while (nNewTriangles > 0)
+			{
+				// Take triangle from front of queue
+				polygon test = listTriangles.front();
+				listTriangles.pop_front();
+				nNewTriangles--;
+
+				// Clip it against a plane. We only need to test each
+				// subsequent plane, against subsequent new triangles
+				// as all triangles after a plane clip are guaranteed
+				// to lie on the inside of the plane. I like how this
+				// comment is almost completely and utterly justified
+				switch (p)
+				{
+				case 0:	nTrisToAdd = polygon_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, &test, &clipped[0], &clipped[1], &verts); break;
+				case 1:	nTrisToAdd = polygon_ClipAgainstPlane({ 0.0f, (float)screen.SCREEN_HEIGHT - 10, 0.0f }, { 0.0f, -1.0f, 0.0f }, &test, &clipped[0], &clipped[1], &verts); break;
+				case 2:	nTrisToAdd = polygon_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, &test, &clipped[0], &clipped[1], &verts); break;
+				case 3:	nTrisToAdd = polygon_ClipAgainstPlane({ (float)screen.SCREEN_WIDTH - 10, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, &test, &clipped[0], &clipped[1], &verts); break;
+				}
+
+				// Clipping may yield a variable number of triangles, so
+				// add these new ones to the back of the queue for subsequent
+				// clipping against next planes
+				for (int w = 0; w < nTrisToAdd; w++)
+					listTriangles.push_back(clipped[w]);
+			}
+			nNewTriangles = listTriangles.size();
+		}
+
+		for (polygon& p : listTriangles) {
+			clipped_polys.push_back(p);
+		}
+	}
+	auto sortPolys = [&](polygon& t1, polygon& t2)
+		{
+			size_t size1 = t1.p.size() - 1;
+			size_t size2 = t2.p.size() - 1;
+			float z1 = 0.0f;
+			float z2 = 0.0f;
+			for (int i = 0; i < size1; i++) {
+				z1 += verts[t1.p[i]].z;
+			}
+			z1 /= size1 + 1;
+			for (int i = 0; i < size2; i++) {
+				z2 += verts[t2.p[i]].z;
+			}
+			z2 /= size2 + 1;
+			return z1 > z2;
+		};*/
+
+		//sort(clipped_polys.begin(), clipped_polys.end(), sortPolys);
+
+		// delegates the triangle drawing to another thread
+	_drawPolygons(_camera, _light, &verts, &polys);
+}
+void SDLGameEngine::moveMeshX(mesh* t_mesh, float unit) {
+	t_mesh->origin.x += unit;
+}
+void SDLGameEngine::moveMeshY(mesh* t_mesh, float unit) {
+	t_mesh->origin.y += unit;
+}
+void SDLGameEngine::moveMeshZ(mesh* t_mesh, float unit) {
+	t_mesh->origin.z += unit;
+}
+void SDLGameEngine::rotateMeshX(mesh* r_mesh, float degree) {
+	r_mesh->RotationX = degree * 3.14159f / 180;
+}
+void SDLGameEngine::rotateMeshY(mesh* r_mesh, float degree) {
+	r_mesh->RotationY = degree * 3.14159f / 180;
+}
+void SDLGameEngine::rotateMeshZ(mesh* r_mesh, float degree) {
+	r_mesh->RotationZ = degree * 3.14159f / 180;
+}
+void SDLGameEngine::throwException(string file, string function, string str, bool ishost) {
+	string message = "";
+	if (ishost) message = "Exception from CPU";
+	else		message = "Exception from GPU";
+
+	screen.fill(0xffffff);
+	screen.DrawString(file + "::" + function + "()", 10, 5, 0xff0000, 2);
+	screen.DrawString(str, 10, 25, 0xff0000, 1);
+	screen.DrawString(message, 10, 45, 0xff0000, 2);
+	screen.update();
+	screen.ShowCursor();
+	quit = false;
+
+	while (1) {
+		while (screen.PollEvent()) {
+			if (screen.e.type == QUIT) {
+				quit = true;
+			}
+		}
+	}
 }
 
-int main(int argc, char* args[])
-{
-	GameEngine game;
 
-	game._this = &game;
+int main() {
+	// Creating buffer of 4 elements to be used inside the kernel code
+	sycl::buffer<size_t, 1> Buffer(4);
 
-	game.CreateNewScreen("Hello World", DEFAULT_WIDTH, DEFAULT_HEIGHT);
-	game.screen.setIcon("icon.bmp");
+	// Creating SYCL queue
+	sycl::queue Queue;
 
-	game.screen.HideCursor();
-	game.screen.setMousePos(game.screen.SCREEN_WIDTH / 2, game.screen.SCREEN_HEIGHT / 2);
+	// Size of index space for kernel
+	sycl::range<1> NumOfWorkItems{ Buffer.size() };
 
-	game.start();
+	// Submitting command group(work) to queue
+	Queue.submit([&](sycl::handler& cgh) {
+		// Getting write only access to the buffer on a device.
+		sycl::accessor Accessor{ Buffer, cgh, sycl::write_only };
+		// Executing kernel
+		cgh.parallel_for<class FillBuffer>(
+			NumOfWorkItems, [=](sycl::id<1> WIid) {
+				// Fill buffer with indexes.
+				Accessor[WIid] = WIid.get(0);
+			});
+		});
 
-	return 0;
+	// Getting read only access to the buffer on the host.
+	// Implicit barrier waiting for queue to complete the work.
+	sycl::host_accessor HostAccessor{ Buffer, sycl::read_only };
+
+	// Check the results
+	bool MismatchFound = false;
+	for (size_t I = 0; I < Buffer.size(); ++I) {
+		if (HostAccessor[I] != I) {
+			std::cout << "The result is incorrect for element: " << I
+				<< " , expected: " << I << " , got: " << HostAccessor[I]
+				<< std::endl;
+			MismatchFound = true;
+		}
+	}
+
+	if (!MismatchFound) {
+		std::cout << "The results are correct!" << std::endl;
+	}
+
+	return MismatchFound;
 }
+
+/*
+int main() {
+
+	device d(cpu_selector{});
+
+	queue q(d);
+
+	// Print out the device information used for the kernel code.
+	std::cout << "Running on device: "
+		<< q.get_device().get_info<info::device::name>() << "\n";
+
+	q.submit([&](handler& h) {
+
+		h.parallel_for(1, [=](auto i) {
+			std::vector<device> filtered_device_list;
+			int index = 0;
+			auto platformlist = platform::get_platforms();
+			for (auto p : platformlist)
+			{
+				decltype(p.get_devices(info::device_type::all)) devicelist;
+				devicelist = p.get_devices(info::device_type::all);
+				for (auto d : devicelist)
+				{
+					std::string device_vendor = d.get_info<info::device::vendor>();
+					std::cout << d.get_info<info::device::name>() << "\n";
+				}
+			}
+			});
+		});
+	q.wait_and_throw();
+	return 0;
+}*/

@@ -1,25 +1,6 @@
 #include "window.h"
 
 window::window() {
-	Window = nullptr;
-	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-		return;
-	}
-	else {
-		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-			depthBuffer.push_back(0.0f);
-		}
-		Window = SDL_CreateWindow("default Empty", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
-		screenSurface = SDL_GetWindowSurface(Window);
-		if (Window == nullptr) {
-			return;
-		}
-		else {
-			SDL_UpdateWindowSurface(Window);
-			bool quit = false;
-			created = 1;
-		}
-	}
 }
 
 window::window(const char* name) {
@@ -30,9 +11,6 @@ window::window(const char* name) {
 		return;
 	}
 	else {
-		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-			depthBuffer.push_back(0.0f);
-		}
 		Window = SDL_CreateWindow(name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
@@ -50,6 +28,9 @@ window::window(const char* name, unsigned int w, unsigned int h) {
 
 	w_name = name;
 
+	SCREEN_BASE_WIDTH = w;
+	SCREEN_BASE_HEIGHT = h;
+
 	SCREEN_WIDTH = w;
 	SCREEN_HEIGHT = h;
 
@@ -58,10 +39,29 @@ window::window(const char* name, unsigned int w, unsigned int h) {
 		return;
 	}
 	else {
-		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-			depthBuffer.push_back(0.0f);
-		}
 		Window = SDL_CreateWindow(name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+		screenSurface = SDL_GetWindowSurface(Window);
+		if (Window == nullptr) {
+			return;
+		}
+		else {
+			SDL_UpdateWindowSurface(Window);
+			bool quit = false;
+			created = 1;
+		}
+	}
+}
+
+void window::resizable() {
+	SDL_DestroyWindow(Window);
+	SDL_Quit();
+
+	Window = nullptr;
+	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+		return;
+	}
+	else {
+		Window = SDL_CreateWindow(w_name.data(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
 			return;
@@ -120,10 +120,6 @@ void window::changeSize(unsigned int w, unsigned int h) {
 		return;
 	}
 	else {
-		depthBuffer.clear();
-		for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-			depthBuffer.push_back(0.0f);
-		}
 		Window = SDL_CreateWindow(w_name.data(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 		screenSurface = SDL_GetWindowSurface(Window);
 		if (Window == nullptr) {
@@ -819,15 +815,90 @@ bool window::PollEvent() {
 	int r = SDL_PollEvent(&e);
 	if (e.type == MOUSEPRESSED) {
 		if (e.button.button == SDL_BUTTON_LEFT) {
+			focused = nullptr;
 			int mousex, mousey;
 			SDL_GetMouseState(&mousex, &mousey);
-			for (int i = 0; i < buttons.size(); i++) {
-				if (mousex >= buttons[i].x && 
-					mousey >= buttons[i].y &&
-					mousex <= buttons[i].x + buttons[i].xend && 
-					mousey <= buttons[i].y + buttons[i].yend) {
-					buttons[i].OnClick(buttons[i].ptr);
+			for (int i = 0; i < widgets.size(); i++) {
+				if (widgets[i]->Type & WIDGET_TYPE_CLICKABLE) {
+					if (mousex >= widgets[i]->x &&
+						mousey >= widgets[i]->y &&
+						mousex <= widgets[i]->x + widgets[i]->sizex &&
+						mousey <= widgets[i]->y + widgets[i]->sizey) {
+						((Button*)widgets[i])->OnClick(((Button*)widgets[i])->ptr);
+						break;
+					}
 				}
+				else if (widgets[i]->Type & WIDGET_TYPE_FOCUSABLE) {
+					if (mousex >= widgets[i]->x &&
+						mousey >= widgets[i]->y &&
+						mousex <= widgets[i]->x + widgets[i]->sizex &&
+						mousey <= widgets[i]->y + widgets[i]->sizey) {
+						focused = widgets[i];
+						break;
+					}
+				}
+				else if (widgets[i]->Type & WIDGET_TYPE_DRAGGABLE) {
+					if (mousex >= widgets[i]->x &&
+						mousey >= widgets[i]->y &&
+						mousex <= widgets[i]->x + widgets[i]->sizex &&
+						mousey <= widgets[i]->y + widgets[i]->sizey) {
+						focused = widgets[i];
+						break;
+					}
+				}
+			}
+			isMouseDown = true;
+		}
+	}
+	else if (e.type == MOUSERELEASED) {
+		isMouseDown = false;
+	}
+	else if (e.type == MOUSEMOTION) {
+		if (focused != nullptr) {
+			if (isMouseDown) {
+				if (focused->Type & WIDGET_TYPE_DRAGGABLE) {
+					((Scale*)focused)->Drag(focused->ptrToWidget, e.motion.x, e.motion.y);
+					((Scale*)focused)->OnDrag(focused->ptrToWidget, e.motion.x, e.motion.y);
+				}
+			}
+		}
+	}
+	else if (e.type == KEYDOWN) {
+		if (focused != nullptr) {
+			if (focused->Type & WIDGET_TYPE_KBTYPABLE) {
+				if (e.key.keysym.scancode == 42) {
+					if (((Entry*)focused)->value.size() > 0)
+					((Entry*)focused)->value.pop_back();
+				}
+				else ((Entry*)focused)->value += e.key.keysym.sym;
+			}
+		}
+	}
+	else if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
+		
+		int posx = 0, posy = 0;
+		SDL_GetWindowPosition(Window, &posx, &posy);
+		
+		SDL_DestroyWindow(Window);
+		SDL_Quit();
+
+		SCREEN_WIDTH = e.window.data1;
+		SCREEN_HEIGHT = e.window.data2;
+
+		Window = nullptr;
+		if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+			return r;
+		}
+		else {
+			Window = SDL_CreateWindow(w_name.data(), posx, posy, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
+			screenSurface = SDL_GetWindowSurface(Window);
+			if (Window == nullptr) {
+				return r;
+			}
+			else {
+				SDL_UpdateWindowSurface(Window);
+				bool quit = false;
+				created = 1;
 			}
 		}
 	}
@@ -858,35 +929,6 @@ void window::setWindowed() {
 	SDL_SetWindowFullscreen(Window, 0);
 }
 
-Button::Button(const Button& b) {
-	text = b.text;
-	x = b.x;
-	y = b.y;
-	xend = b.xend;
-	yend = b.yend;
-	color = b.color;
-	OnClick = b.OnClick;
-	ptr = b.ptr;
-	id = b.id;
-}
-
-Button::Button(string _text, int _x, int _y, int _xend, int _yend, Color _color, BUTTON_CALL* _OnClick, void* _ptr, size_t _id) {
-	text = _text;
-	x = _x;
-	y = _y;
-	xend = _xend;
-	yend = _yend;
-	color = _color;
-	OnClick = _OnClick;
-	ptr = _ptr;
-	id = _id;
-}
-
-Button* window::addButton(string text, int x, int y, int xend, int yend, Color color, BUTTON_CALL* OnClick, void* ptr) {
-	buttons.push_back(Button(text, x, y, xend, yend, color, OnClick, ptr, buttons.size()));
-	return &buttons[buttons.size()-1];
-}
-
 void window::DrawChar(char c, uint16_t x, uint16_t y, uint32_t color, uint8_t size) {
 	uint8_t i, j;
 	// Draw pixels
@@ -908,32 +950,44 @@ void window::DrawString(string _string, uint16_t x, uint16_t y, uint32_t color, 
 }
 
 void window::DrawButtons() {
-	for (Button& b : buttons) {
-		DrawRect(b.x - 2, b.y - 2, b.xend + 2, b.yend + 2, 0xAAAAAA);
-		DrawRect(b.x, b.y, b.xend, b.yend, b.color);
+	/* for (Button & b : buttons) {
+		DrawRect(b.x - 2, b.y - 2, b.sizex + 2, b.sizey + 2, 0xAAAAAA);
+		DrawRect(b.x, b.y, b.sizex, b.sizey, b.color);
 		DrawString(b.text, b.x, b.y, 0, 1);
+	}*/
+}
+
+void window::DrawWidgets() {
+	if (widgets.size() == 0) return;
+	for (auto& b : widgets) {
+		if (b->visible) {
+			int x = 0, y = 0;
+			switch (b->anchor) {
+				case ANCHOR::NORTH_WEST:
+					x = b->x;
+					y = b->y;
+					break;
+				case ANCHOR::NORTH_EAST:
+					x = b->x - (SCREEN_BASE_WIDTH - SCREEN_WIDTH);
+					y = b->y;
+					break;
+				case ANCHOR::SOUTH_WEST:
+					x = b->x;
+					y = b->y - (SCREEN_BASE_HEIGHT - SCREEN_HEIGHT);
+					break;
+				case ANCHOR::SOUTH_EAST:
+					x = b->x - (SCREEN_BASE_WIDTH - SCREEN_WIDTH);
+					y = b->y - (SCREEN_BASE_HEIGHT - SCREEN_HEIGHT);
+					break;
+			}
+			b->draw(this, b->ptrToWidget, x, y);
+		}
 	}
 }
 
-void window::changeButton(size_t id, Button button) {
-	buttons[id] = button;
+void window::updateWidget(size_t id, BaseWidget button) {
+	//buttons[id] = button;
 }
-
-Image::Image(const Image& i) {
-	image = i.image;
-	x = i.x;
-	y = i.y;
-	sizex = i.sizex;
-	sizey = i.sizey;
-	id = i.id;
-}
-Image::Image(string _image, int _x, int _y) {
-	image = IMG_Load(_image.data());
-	x = _x;
-	y = _y;
-	sizex = image->w;
-	sizey = image->h;
-};
 
 void window::RenderImage(Image i) {
 	SDL_Rect base = { 0, 0, i.sizex, i.sizey };
@@ -952,10 +1006,13 @@ SDL_Window** window::getSDLWindow() {
 	return &Window;
 }
 
-
 bool window::isPersistant() {
 	return persist;
 }
 void window::setPersistance(bool persistant) {
 	persist = persistant;
+}
+
+SDL_Surface* window::getsScreenSurface() {
+	return screenSurface;
 }
