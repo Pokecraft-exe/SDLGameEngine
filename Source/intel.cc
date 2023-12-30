@@ -1,132 +1,172 @@
-#include "intel.h"
+#include <sycl/sycl.hpp>
+#include <vector>
+#include <iostream>
+#include <string>
+#include "maths_engine.h"
+#include <thread>
+#if FPGA_HARDWARE || FPGA_EMULATOR || FPGA_SIMULATOR
+#include <sycl/ext/intel/fpga_extensions.hpp>
+#endif
 using namespace sycl;
 
 size_t num_repetitions = 1;
-
+typedef std::vector<float> Vector;
 typedef std::vector<vec3d> vertVector;
+typedef std::vector<mat4x4> worldVector;
+typedef std::vector<camera> cameraVector;
 
 static auto exception_handler = [](sycl::exception_list e_list) {
-	for (std::exception_ptr const& e : e_list) {
-		try {
-			std::rethrow_exception(e);
-		}
-		catch (std::exception const& e) {
+    for (std::exception_ptr const& e : e_list) {
+        try {
+            std::rethrow_exception(e);
+        }
+        catch (std::exception const& e) {
 #if _DEBUG
-			std::cout << "Failure" << std::endl;
+            std::cout << "Failure" << std::endl;
 #endif
-		}
-	}
-};
+            std::terminate();
+        }
+    }
+    };
 
-void calculatePolygonsIntel(__parameters _param, void* _this) {
+extern void _main();
 
-	vertVector* _verts = _param.verts;
-	mesh* _mesh = _param._mesh;
-	camera* _camera = _param._camera;
-	light* _light = _param._light;
+std::atomic<__parameters> param;
+std::atomic<void*> pointer;
+std::atomic<bool> called;
+std::atomic<bool> quit;
 
-	mat4x4 World, Rx, Ry, Rz, t;
+void calculatePolygonsIntel(__parameters p, void* _this) {
+    param.store(p);
+    pointer.store(_this);
+    called.store(true);
+    while (called);
+}
 
+SYCL_EXTERNAL
+void MultiplyMatrixVectorIntel(vec3d* i, vec3d* o, mat4x4* m)
+{
+    o->x = i->x * m->m[0][0] + i->y * m->m[1][0] + i->z * m->m[2][0] + m->m[3][0];
+    o->y = i->x * m->m[0][1] + i->y * m->m[1][1] + i->z * m->m[2][1] + m->m[3][1];
+    o->z = i->x * m->m[0][2] + i->y * m->m[1][2] + i->z * m->m[2][2] + m->m[3][2];
+    o->w = i->x * m->m[0][3] + i->y * m->m[1][3] + i->z * m->m[2][3] + m->m[3][3];
 
-	size_t vector_size = _mesh->vertices.size();
+    if (o->w != 0.0f)
+    {
+        o->x /= o->w; o->y /= o->w; o->z /= o->w;
+    }
+}
 
-	_param.Rx = &Rx;
-	_param.Ry = &Ry;
-	_param.Rz = &Rz;
-	_param.t = &t;
-	_param.World = &World;
+void VectorCalculate(queue& q, const vertVector& in_vector, vertVector& temp_vector, vertVector& temp_vector2,
+    vertVector* out_parallel, const worldVector& world, const cameraVector& cam, const Vector& screenS) {
+    range<1> num_items{ in_vector.size() };
 
-	_verts->resize(vector_size);
+    buffer in_buf(in_vector);
+    buffer temp_buf(temp_vector);
+    buffer temp_buf2(temp_vector2);
+    buffer world_buf(world);
+    buffer cam_buf(cam);
+    buffer screen_buf(screenS);
+    buffer out_buf(out_parallel->data(), num_items);
 
-	((SDLGameEngine*)_this)->_meshApplyRotations(_param);
-	((SDLGameEngine*)_this)->_meshApplyTransations(_param);
+    for (size_t i = 0; i < num_repetitions; i++) {
+        q.submit([&](handler& h) {
+            // Create an accessor for each buffer with access permission: read, write or
+            // read/write. The accessor is a mean to access the memory in the buffer.
+            accessor in(in_buf, h, read_only);
+            accessor temprw(temp_buf, h, read_write);
+            accessor temprw2(temp_buf2, h, read_write);
+            accessor World(world_buf, h, read_only);
+            accessor _camera(cam_buf, h, read_only);
+            accessor sizes(screen_buf, h, read_only);
 
-	World = ((SDLGameEngine*)_this)->_matrixMakeIdentity();
-	World = Matrix_MultiplyMatrix(Ry, Rz);
-	World = Matrix_MultiplyMatrix(World, Rx);
-	World = Matrix_MultiplyMatrix(World, t);
+            accessor out(out_buf, h, read_write, no_init);
 
-	mat4x4 _cameraRotationX;
-	mat4x4 _cameraRotationY;
-	mat4x4 _cameraRotationZ;
-	mat4x4 _cameraRotation;
+            //sycl::stream cout(1024, 256, h);
 
-	_param.Rx = &_cameraRotationX;
-	_param.Ry = &_cameraRotationY;
-	_param.Rz = &_cameraRotationZ;
+            h.parallel_for(num_items, [=](auto i) {
+                temprw[i].x = in[i].x * World[0].m[0][0] + in[i].y * World[0].m[1][0] + in[i].z * World[0].m[2][0] + in[i].w * World[0].m[3][0];
+                temprw[i].y = in[i].x * World[0].m[0][1] + in[i].y * World[0].m[1][1] + in[i].z * World[0].m[2][1] + in[i].w * World[0].m[3][1];
+                temprw[i].z = in[i].x * World[0].m[0][2] + in[i].y * World[0].m[1][2] + in[i].z * World[0].m[2][2] + in[i].w * World[0].m[3][2];
+                temprw[i].w = in[i].x * World[0].m[0][3] + in[i].y * World[0].m[1][3] + in[i].z * World[0].m[2][3] + in[i].w * World[0].m[3][3];
 
-	((SDLGameEngine*)_this)->_cameraApplyRotations(_param);
+                //temprw[1].x = temprw[0].x * _camera[0]._matrix.m[0][0] + temprw[0].y * _camera[0]._matrix.m[1][0] + temprw[0].z * _camera[0]._matrix.m[2][0] + temprw[0].w * _camera[0]._matrix.m[3][0];
+                //temprw[1].y = temprw[0].x * _camera[0]._matrix.m[0][1] + temprw[0].y * _camera[0]._matrix.m[1][1] + temprw[0].z * _camera[0]._matrix.m[2][1] + temprw[0].w * _camera[0]._matrix.m[3][1];
+                //temprw[1].z = temprw[0].x * _camera[0]._matrix.m[0][2] + temprw[0].y * _camera[0]._matrix.m[1][2] + temprw[0].z * _camera[0]._matrix.m[2][2] + temprw[0].w * _camera[0]._matrix.m[3][2];
+                //temprw[1].w = temprw[0].x * _camera[0]._matrix.m[0][3] + temprw[0].y * _camera[0]._matrix.m[1][3] + temprw[0].z * _camera[0]._matrix.m[2][3] + temprw[0].w * _camera[0]._matrix.m[3][3];
 
-	_cameraRotation = Matrix_MultiplyMatrix(_cameraRotationZ, _cameraRotationY);
-	_cameraRotation = Matrix_MultiplyMatrix(_cameraRotation, _cameraRotationZ);
+                MultiplyMatrixVectorIntel((vec3d*)&temprw[i], (vec3d*)&out[i], (mat4x4*)&_camera[0].projection);
 
-	_camera->_up = { 0, 1, 0 };
-	_camera->_target = { 0, 0, 1 };
-	_camera->_pointAt = MultiplyMatrixVector(_cameraRotation, _camera->_target);
+                out[i].x ++;
+                out[i].y ++;
+                out[i].x *= 0.5f * sizes[0];
+                out[i].y *= 0.5f * sizes[1];
 
-	_camera->_target = Vector_Add(_camera->position, _camera->_pointAt);
+                //cout << "in[" << (int)i.get_id() << "] X= " << out[i].x << " Y= " << out[i].y << " Z= " << out[i].z << '\n';
+                });
+            });
+    };
+    // Wait until compute tasks on GPU done
+    q.wait();
+}
 
-	mat4x4 __matrix = Matrix_PointAt(_camera->position, _camera->_target, _camera->_up);
-	_camera->_matrix = __matrix; Matrix_QuickInverse(__matrix);
+void terminateProgram() {
+    quit = true;
+}
 
-	size_t size = _mesh->vertices.size() - 1;
+extern void GPUThrow(void*, string);
 
-	try {
-		queue q;//cpu_selector_v, exception_handler);
+int main(int argc, char* argv[]) {
+    auto gpuselector = gpu_selector_v;
 
-		// Print out the device information used for the kernel code.
-		std::cout << "Running on device: "
-			<< q.get_device().get_info<info::device::name>() << "\n";
-		std::cout << "Vector size: " << _mesh->vertices.size() << "\n";
+    Vector sizes;
+    vertVector verts, temp, temp2;
+    worldVector World;
+    cameraVector _camera;
+    
+    quit = false;
+    sizes.resize(2);
+    World.resize(1);
+    _camera.resize(1);
 
-		// Vector addition in SYCL
-		range<1> num_items{ _verts->size() };
+    std::thread t = std::thread(_main);
 
-		vertVector temp; temp.resize(2);
+    queue gpu(gpuselector, exception_handler);
+    std::cout << "Running on device: "
+        << gpu.get_device().get_info<info::device::name>() << "\n";
 
-		buffer v_buf(_mesh->vertices);
-		buffer v_temp(temp);
-		buffer out_buf(_verts->data(), num_items);
+    // wait for invocation (SDLGameEngine::_calculatePolygons() -> calculatePolygonsIntel())
+    while (!quit) {
+        if (called.load()) {
+            try {
+                size_t vector_size = param.load()._mesh->vertices.size();
+                param.load().verts->resize(vector_size);
+                temp.resize(vector_size);
+                temp2.resize(vector_size);
 
-		q.submit([&](handler& h) {
-			accessor vaccess(v_buf, h, read_only);
-			accessor temprw(v_temp, h, read_write, no_init);
-			accessor outaccess(out_buf, h, write_only, no_init);
+                World[0] = *param.load().World;
+                _camera[0] = *param.load()._camera;
+                sizes[0] = param.load().sx;
+                sizes[1] = param.load().sy;
 
-			h.parallel_for<SDLGameEngine>(num_items, [=](auto i) {
-				temprw[1].x = temprw[0].x * World.m[0][0] + temprw[0].y * World.m[1][0] + temprw[0].z * World.m[2][0] + temprw[0].w * World.m[3][0];
-				temprw[1].y = temprw[0].x * World.m[0][1] + temprw[0].y * World.m[1][1] + temprw[0].z * World.m[2][1] + temprw[0].w * World.m[3][1];
-				temprw[1].z = temprw[0].x * World.m[0][2] + temprw[0].y * World.m[1][2] + temprw[0].z * World.m[2][2] + temprw[0].w * World.m[3][2];
-				temprw[1].w = temprw[0].x * World.m[0][3] + temprw[0].y * World.m[1][3] + temprw[0].z * World.m[2][3] + temprw[0].w * World.m[3][3];
+                //std::cout << "Vector size: " << vector_size << "\n";
+                VectorCalculate(gpu, param.load()._mesh->vertices, temp, temp2, param.load().verts, World, _camera, sizes);
+                //param.verts->insert(param.verts->begin(), verts.begin(), verts.end());
+                called.store(false);
+            }
+            catch (sycl::exception const& e) {
+                std::cout << "An exception is caught in GPU.\n";
+                called.store(false);
+                GPUThrow(pointer, e.what());
+            }
+        }
+    }
 
-				temprw[0] = temprw[1];
+    std::cout << "Vector add successfully completed on device.\n";
 
-				temprw[1].x = temprw[0].x * _camera->_matrix.m[0][0] + temprw[0].y * _camera->_matrix.m[1][0] + temprw[0].z * _camera->_matrix.m[2][0] + temprw[0].w * _camera->_matrix.m[3][0];
-				temprw[1].y = temprw[0].x * _camera->_matrix.m[0][1] + temprw[0].y * _camera->_matrix.m[1][1] + temprw[0].z * _camera->_matrix.m[2][1] + temprw[0].w * _camera->_matrix.m[3][1];
-				temprw[1].z = temprw[0].x * _camera->_matrix.m[0][2] + temprw[0].y * _camera->_matrix.m[1][2] + temprw[0].z * _camera->_matrix.m[2][2] + temprw[0].w * _camera->_matrix.m[3][2];
-				temprw[1].w = temprw[0].x * _camera->_matrix.m[0][3] + temprw[0].y * _camera->_matrix.m[1][3] + temprw[0].z * _camera->_matrix.m[2][3] + temprw[0].w * _camera->_matrix.m[3][3];
+    t.join();
 
-				temprw[0] = temprw[1];
+    std::exit(0);
 
-				outaccess[i].x = temprw[0].x * _camera->_matrix.m[0][0] + temprw[0].y * _camera->_matrix.m[1][0] + temprw[0].z * _camera->_matrix.m[2][0] + temprw[0].w * _camera->_matrix.m[3][0];
-				outaccess[i].y = temprw[0].x * _camera->_matrix.m[0][1] + temprw[0].y * _camera->_matrix.m[1][1] + temprw[0].z * _camera->_matrix.m[2][1] + temprw[0].w * _camera->_matrix.m[3][1];
-				outaccess[i].z = temprw[0].x * _camera->_matrix.m[0][2] + temprw[0].y * _camera->_matrix.m[1][2] + temprw[0].z * _camera->_matrix.m[2][2] + temprw[0].w * _camera->_matrix.m[3][2];
-				outaccess[i].w = temprw[0].x * _camera->_matrix.m[0][3] + temprw[0].y * _camera->_matrix.m[1][3] + temprw[0].z * _camera->_matrix.m[2][3] + temprw[0].w * _camera->_matrix.m[3][3];
-
-				outaccess[i].x = vaccess[i].x / vaccess[i].w;
-				outaccess[i].y = vaccess[i].y / vaccess[i].w;
-				outaccess[i].z = vaccess[i].z / vaccess[i].w;
-				outaccess[i].x += 1.0f;
-				outaccess[i].y += 1.0f;
-				outaccess[i].x *= 0.5f * (float)((SDLGameEngine*)_this)->screen.SCREEN_WIDTH;
-				outaccess[i].y *= 0.5f * (float)((SDLGameEngine*)_this)->screen.SCREEN_HEIGHT;
-				});
-			});
-		q.wait();
-		temp.clear();
-	}
-	catch (sycl::exception const& e) {
-		cout << e.what();
-		((SDLGameEngine*)_this)->throwException(__FILE__, __FUNCTION__, e.what(), false);
-	}
+    return 0;
 }

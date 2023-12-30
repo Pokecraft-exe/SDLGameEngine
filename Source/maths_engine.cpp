@@ -2,7 +2,7 @@
 
 float radToDeg(float radian) { return radian * 180 / 3.14159f; }
 camera::camera() { Near = 0.0f; }
-camera::camera(int h, int w) {
+camera::camera(int w, int h) {
 	Near = 0.1f;
 	Far = 1000.0f;
 	Fov = 90.0f;
@@ -223,10 +223,17 @@ bool IsPointInTriangle(vec3d p, vec3d a, vec3d b, vec3d c) {
 
 vec3d calculate_normal(vector<vec3d>& poly) {
 	if (poly.size() < 3) { return { 0, 0, 0 }; }
-	vec3d v1 = Vector_Sub(poly[1], poly[0]);
-	vec3d v2 = Vector_Sub(poly[2], poly[0]);
 	vec3d normal;
-	normal = Vector_CrossProduct(v1, v2);
+
+	vec3d C = poly[(int)poly.size() / 2];
+	size_t s = poly.size() - 1;
+
+	for (int i = 0; i < s; i++) {
+		vec3d v1 = Vector_Sub(poly[i], C);
+		vec3d v2 = Vector_Sub(poly[i + 1], C);
+		vec3d t = Vector_CrossProduct(v1, v2);
+		normal = Vector_Add(normal, t);
+	}
 	normal.normalise();
 	return normal;
 }

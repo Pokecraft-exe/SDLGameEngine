@@ -135,19 +135,19 @@ CheckBox::CheckBox(string _text, int _x, int _y) {
 
 void DragScale(void* _this, int Horizontal, int Vertical) {
 	if (((Scale*)_this)->horizontal) {
-		int offset = Horizontal - ((Scale*)_this)->x;
-		((Scale*)_this)->value = offset * ((Scale*)_this)->max / ((Scale*)_this)->sizex;
+		float offset = Horizontal - ((Scale*)_this)->x;
+		((Scale*)_this)->value = offset * (float)((Scale*)_this)->max / (float)((Scale*)_this)->sizex;
 	}
 	else {
-		int offset = Vertical - ((Scale*)_this)->y;
-		((Scale*)_this)->value = offset * ((Scale*)_this)->max / ((Scale*)_this)->sizey;
+		float offset = Vertical - ((Scale*)_this)->y;
+		((Scale*)_this)->value = offset * (float)((Scale*)_this)->max / (float)((Scale*)_this)->sizey;
 	}
 
 	if (((Scale*)_this)->value < 0) ((Scale*)_this)->value = 0;
 	if (((Scale*)_this)->value > ((Scale*)_this)->max) ((Scale*)_this)->value = ((Scale*)_this)->max;
 }
 
-void defaultOnDrag(void*, int, int) {};
+void defaultOnDrag(void* a, int b, int c) { return; }
 
 void DrawScale(void* w, void* _this, int x, int y) {
 	((window*)w)->DrawRect(x - 2, y - 2, ((Scale*)_this)->sizex + 2, ((Scale*)_this)->sizey + 2, 0xAAAAAA);
@@ -178,4 +178,13 @@ Scale::Scale(int _x, int _y, int _sizex, int _sizey, int _max, bool _horizontal,
 	if (OnDrag == nullptr) OnDrag = (DRAG_CALL*)defaultOnDrag;
 	max = _max;
 	Type = WIDGET_TYPE_DRAGGABLE;
+}
+
+
+
+void drawEndWidget(void* a, void* b, int c, int d) { return; }
+
+EndWidget::EndWidget() {
+	draw = (DRAW_CALL*)drawEndWidget;
+	ptrToWidget = this;
 }

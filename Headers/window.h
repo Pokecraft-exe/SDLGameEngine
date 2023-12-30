@@ -66,6 +66,7 @@ public:
 	void drawDepthPolygon(vector<vec3d> Points, uint32_t color);
 	void drawAAPolygon(vector<vec3d> Points, uint32_t color);
 	void quit();
+	void destroy();
 	void fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color);
 	void fillAATriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint32_t color);
 	void fillPolygon(vector<vec3d> Points, uint32_t color);

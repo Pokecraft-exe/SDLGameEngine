@@ -1,6 +1,6 @@
 #include "game.h"
-#include <sycl/sycl.hpp>
-using namespace sycl;
+
+extern void terminateProgram();
 
 SDLGameEngine::SDLGameEngine() {
 }
@@ -21,6 +21,7 @@ void SDLGameEngine::GameThread() {
 	}
 
 	if (!screen.isPersistant()) screen.quit();
+	terminateProgram();
 	return;
 }
 mat4x4 SDLGameEngine::_matrixMakeIdentity()
@@ -102,9 +103,15 @@ void SDLGameEngine::_drawPolygons(camera* _camera, light* _light, vector<vec3d>*
 
 		float dp = normal.x * _light->orientation.x + normal.y * _light->orientation.y + normal.z * _light->orientation.z;
 
-		if (1) {//Vector_DotProduct(normal, _camera->_pointAt) < 0.0f) {
-			screen.fillPolygon(verts, m.Ka);//0xffffff);
-			//screen.drawPolygon(verts, 0xff6666);
+		Color c = 0;
+
+		c.R(dp * 255.0f);
+		c.G(dp * 255.0f);
+		c.B(dp * 255.0f);
+
+		if (Vector_DotProduct(normal, _camera->_pointAt) < 0.0f) {
+			screen.fillPolygon(verts, c);
+			screen.drawPolygon(verts, 0xff6666);
 		}
 	}
 }
@@ -122,7 +129,7 @@ void SDLGameEngine::start() {
 	else {
 		currentGpu = gpu::Intel;
 
-		_calculatePolygons = &calculatePolygonsIntel; 
+		_calculatePolygons = &calculatePolygonsIntel;
 
 		cout << "Switching to intel device gpu" << std::endl;
 	}
@@ -132,8 +139,8 @@ void SDLGameEngine::start() {
 void SDLGameEngine::CreateNewScreen(string Name, int w, int h) {
 	screen = window(Name.c_str(), w, h);
 }
-float SDLGameEngine::fps() { 
-	return _fps; 
+float SDLGameEngine::fps() {
+	return _fps;
 }
 mesh SDLGameEngine::getMesh(string sFilename) {
 	ifstream f(sFilename);
@@ -217,11 +224,58 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 	vector<polygon> clipped_polys;
 	__parameters param = { &verts, _mesh, _camera, _light }; param.end = false;
 
-	// delegates the triangle calculation to another thread while triangulating
-	std::thread t = std::thread(*_calculatePolygons, param, (void*)this);
-	t.join();
+	mat4x4 World, Rx, Ry, Rz, t;
 
-	cout << "VERTS SIZE: " << verts.size() << std::endl;
+	param.Rx = &Rx;
+	param.Ry = &Ry;
+	param.Rz = &Rz;
+	param.t = &t;
+	param.World = &World;
+
+	size_t vector_size = _mesh->vertices.size();
+
+	verts.resize(vector_size);
+
+	_meshApplyRotations(param);
+	_meshApplyTransations(param);
+
+	World = _matrixMakeIdentity();
+	World = Matrix_MultiplyMatrix(Ry, Rz);
+	World = Matrix_MultiplyMatrix(World, Rx);
+	World = Matrix_MultiplyMatrix(World, t);
+
+	mat4x4 _cameraRotationX;
+	mat4x4 _cameraRotationY;
+	mat4x4 _cameraRotationZ;
+	mat4x4 _cameraRotation;
+
+	param.Rx = &_cameraRotationX;
+	param.Ry = &_cameraRotationY;
+	param.Rz = &_cameraRotationZ;
+
+	_cameraApplyRotations(param);
+
+	_cameraRotation = Matrix_MultiplyMatrix(_cameraRotationZ, _cameraRotationY);
+	_cameraRotation = Matrix_MultiplyMatrix(_cameraRotation, _cameraRotationZ);
+
+	_camera->_up = { 0, 1, 0 };
+	_camera->_target = { 0, 0, 1 };
+	_camera->_pointAt = MultiplyMatrixVector(_cameraRotation, _camera->_target);
+
+	_camera->_target = Vector_Add(_camera->position, _camera->_pointAt);
+
+	mat4x4 __matrix = Matrix_PointAt(_camera->position, _camera->_target, _camera->_up);
+	_camera->_matrix = __matrix; Matrix_QuickInverse(__matrix);
+
+	param.World = &World;
+
+	param.sx = screen.sizex();
+	param.sy = screen.sizey();
+
+	// delegates the triangle calculation to another thread while triangulating
+	_calculatePolygons(param, (void*)this);
+
+	/*cout << "VERTS SIZE: " << verts.size() << std::endl;
 
 	int i = 0;
 	for (vec3d v : verts) {
@@ -305,7 +359,7 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 		for (polygon& p : listTriangles) {
 			clipped_polys.push_back(p);
 		}
-	}
+	}*/
 	auto sortPolys = [&](polygon& t1, polygon& t2)
 		{
 			size_t size1 = t1.p.size() - 1;
@@ -321,11 +375,12 @@ void SDLGameEngine::render(mesh* _mesh, camera* _camera, light* _light) {
 			}
 			z2 /= size2 + 1;
 			return z1 > z2;
-		};*/
+		};
 
-		//sort(clipped_polys.begin(), clipped_polys.end(), sortPolys);
+	//sort(polys.begin(), polys.end(), sortPolys);
 
 		// delegates the triangle drawing to another thread
+
 	_drawPolygons(_camera, _light, &verts, &polys);
 }
 void SDLGameEngine::moveMeshX(mesh* t_mesh, float unit) {
@@ -351,97 +406,33 @@ void SDLGameEngine::throwException(string file, string function, string str, boo
 	if (ishost) message = "Exception from CPU";
 	else		message = "Exception from GPU";
 
-	screen.fill(0xffffff);
-	screen.DrawString(file + "::" + function + "()", 10, 5, 0xff0000, 2);
-	screen.DrawString(str, 10, 25, 0xff0000, 1);
-	screen.DrawString(message, 10, 45, 0xff0000, 2);
-	screen.update();
-	screen.ShowCursor();
+	int len = str.length() * 8;
+
+	window screen2("Error", len, 100);
+
+	screen2.fill(0xffffff);
+	screen2.DrawString(file + "::" + function + "()", 10, 5, 0xff0000, 2);
+	screen2.DrawString(str, 10, 25, 0xff0000, 1);
+	screen2.DrawString(message, 10, 45, 0xff0000, 2);
+	screen2.update();
+	screen2.ShowCursor();
 	quit = false;
 
 	while (1) {
+
 		while (screen.PollEvent()) {
 			if (screen.e.type == QUIT) {
+				quit = true;
+			}
+		}
+		while (screen2.PollEvent()) {
+			if (screen2.e.type == QUIT) {
 				quit = true;
 			}
 		}
 	}
 }
 
-
-int main() {
-	// Creating buffer of 4 elements to be used inside the kernel code
-	sycl::buffer<size_t, 1> Buffer(4);
-
-	// Creating SYCL queue
-	sycl::queue Queue;
-
-	// Size of index space for kernel
-	sycl::range<1> NumOfWorkItems{ Buffer.size() };
-
-	// Submitting command group(work) to queue
-	Queue.submit([&](sycl::handler& cgh) {
-		// Getting write only access to the buffer on a device.
-		sycl::accessor Accessor{ Buffer, cgh, sycl::write_only };
-		// Executing kernel
-		cgh.parallel_for<class FillBuffer>(
-			NumOfWorkItems, [=](sycl::id<1> WIid) {
-				// Fill buffer with indexes.
-				Accessor[WIid] = WIid.get(0);
-			});
-		});
-
-	// Getting read only access to the buffer on the host.
-	// Implicit barrier waiting for queue to complete the work.
-	sycl::host_accessor HostAccessor{ Buffer, sycl::read_only };
-
-	// Check the results
-	bool MismatchFound = false;
-	for (size_t I = 0; I < Buffer.size(); ++I) {
-		if (HostAccessor[I] != I) {
-			std::cout << "The result is incorrect for element: " << I
-				<< " , expected: " << I << " , got: " << HostAccessor[I]
-				<< std::endl;
-			MismatchFound = true;
-		}
-	}
-
-	if (!MismatchFound) {
-		std::cout << "The results are correct!" << std::endl;
-	}
-
-	return MismatchFound;
+void GPUThrow(void* ptr, string str) {
+	((SDLGameEngine*)ptr)->throwException("intel.cc", "VectorCalculate()", str, false);
 }
-
-/*
-int main() {
-
-	device d(cpu_selector{});
-
-	queue q(d);
-
-	// Print out the device information used for the kernel code.
-	std::cout << "Running on device: "
-		<< q.get_device().get_info<info::device::name>() << "\n";
-
-	q.submit([&](handler& h) {
-
-		h.parallel_for(1, [=](auto i) {
-			std::vector<device> filtered_device_list;
-			int index = 0;
-			auto platformlist = platform::get_platforms();
-			for (auto p : platformlist)
-			{
-				decltype(p.get_devices(info::device_type::all)) devicelist;
-				devicelist = p.get_devices(info::device_type::all);
-				for (auto d : devicelist)
-				{
-					std::string device_vendor = d.get_info<info::device::vendor>();
-					std::cout << d.get_info<info::device::name>() << "\n";
-				}
-			}
-			});
-		});
-	q.wait_and_throw();
-	return 0;
-}*/

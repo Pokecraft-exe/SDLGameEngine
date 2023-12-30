@@ -385,6 +385,11 @@ void window::drawAATriangle(int x1, int y1, int x2, int y2, int x3, int y3, uint
 	drawAALine(x3, y3, x1, y1, color);
 }
 
+void window::destroy() {
+	SDL_DestroyWindow(Window);
+	created = 0;
+}
+
 void window::quit() {
 	SDL_DestroyWindow(Window);
 	SDL_Quit();

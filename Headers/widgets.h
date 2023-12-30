@@ -96,11 +96,16 @@ void defaultOnDrag(void*, int, int);
 class Scale : public BaseWidget {
 public:
 	Scale() {};
-	Scale(int x, int y, int sizex, int sizey, int max, bool horizontal = true, DRAG_CALL* onDrag = (DRAG_CALL*)defaultOnDrag);
+	Scale(int x, int y, int sizex, int sizey, int max, bool horizontal = true, DRAG_CALL* onDrag = nullptr);
 	bool horizontal;
 	DRAG_CALL* Drag;
-	DRAG_CALL* OnDrag;
+	DRAG_CALL* OnDrag = nullptr;
 	void* ptr;
-	int value;
-	int max;
+	float value = 0;
+	int max = 100;
+};
+
+class EndWidget : public BaseWidget {
+public:
+	EndWidget();
 };

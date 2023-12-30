@@ -123,6 +123,8 @@ struct __parameters {
 	mat4x4* Rz;
 	mat4x4* t;
 	bool end = 0;
+	float sx;
+	float sy;
 };
 
 float radToDeg(float radian);
